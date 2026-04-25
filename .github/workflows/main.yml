@@ -1,0 +1,113 @@
+name: Run Free Fire Script
+
+on:
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  run-emulator:
+    runs-on: macos-13 # macOS-13 is Intel-based (x86_64) which supports the x86_64 emulator hardware acceleration
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          
+      - name: Install Python Dependencies
+        run: |
+          pip install requests uiautomator2
+
+      - name: Setup Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          version: latest
+
+      - name: Install Socat
+        run: brew install socat
+
+      # The android-emulator-runner will download the system image, create an emulator, start it, and run the script
+      - name: Run Android Emulator and Execute Script
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 25 # Android 7.1 (Nougat) - Lighter and faster for CI
+          target: google_apis # Contains Google APIs
+          arch: x86_64
+          profile: Nexus 6
+          script: |
+            echo "Emulator started successfully!"
+            
+            # 1. Download and Install Free Fire XAPK
+            echo "Downloading Free Fire XAPK..."
+            curl -L -o freefire.zip "https://d.apkpure.com/b/XAPK/com.dts.freefireth?version=latest"
+            
+            echo "Extracting XAPK..."
+            unzip -q freefire.zip -d ff_extract
+            
+            echo "Installing APKs..."
+            cd ff_extract
+            apks=$(find . -name "*.apk")
+            apk_count=$(echo "$apks" | wc -l)
+            
+            if [ "$apk_count" -gt 1 ]; then
+              echo "Installing multiple split APKs..."
+              apks_spaced=$(echo $apks | tr '\n' ' ')
+              adb install-multiple $apks_spaced
+            else
+              echo "Installing single APK..."
+              adb install $apks
+            fi
+            
+            if [ -d "Android/obb" ]; then
+              echo "Pushing OBB files..."
+              adb shell mkdir -p /sdcard/Android/obb/
+              adb push Android/obb/* /sdcard/Android/obb/
+            fi
+            cd ..
+            
+            echo "Launching Free Fire..."
+            # The package name for Free Fire is com.dts.freefireth
+            adb shell monkey -p com.dts.freefireth -c android.intent.category.LAUNCHER 1
+            
+            # -------------------------------------------------------------
+            # Remote Access Setup (Tailscale + Socat + ws-scrcpy)
+            # -------------------------------------------------------------
+            echo "Starting Socat Port Forwarding (Port 10000 -> 5555)..."
+            socat TCP-LISTEN:10000,fork,bind=0.0.0.0 TCP:127.0.0.1:5555 &
+            
+            echo "Setting up ws-scrcpy for Browser Control..."
+            git clone https://github.com/NetrisTV/ws-scrcpy.git
+            cd ws-scrcpy && npm install && npm run dist
+            # Inject CSS (macOS compatible sed)
+            find ./dist -name "index.html" -type f -exec sed -i '' "s|</head>|<style>body{background-color:#121212!important;color:#fff!important;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0}a{text-decoration:none;color:#fff!important;display:block;padding:20px;margin:10px;background:#333;border-radius:15px;font-size:1.2rem;text-align:center;width:85%;max-width:350px;box-shadow:0 4px 6px rgba(0,0,0,0.5);transition:transform 0.1s}a[href*='devtools'],a[href*='shell'],a[href*='proxy'],a[href*='files'],a[href*='tiny']{display:none!important}a[href*='configure']{background:#28a745!important;font-weight:bold}a[href*='H264']{background:#007bff!important;font-weight:bold;font-size:1.4rem}h3,div{text-align:center;width:100%}.device-state{font-size:2rem;margin-bottom:20px}</style></head>|" {} +
+            nohup npm start > ../ws-scrcpy.log 2>&1 &
+            cd ..
+            
+            echo "=========================================================="
+            echo "           WEB ACCESS READY                               "
+            echo "=========================================================="
+            echo "1. Connect your PC to Tailscale."
+            echo "2. Check GitHub Actions Logs for Tailscale IP"
+            echo "3. Open browser: http://<TAILSCALE_IP>:8000"
+            echo "4. Or connect local scrcpy: scrcpy --tcpip=<TAILSCALE_IP>:10000"
+            echo "=========================================================="
+            
+            # Wait a bit for the game to load to the login screen
+            echo "Waiting 60 seconds for the game to load..."
+            sleep 60
+            
+            # 2. Decrypt files before running
+            echo "Decrypting smart_macro.py and profiles..."
+            python super_encrypt.py
+            
+            # 3. Run your custom macro
+            echo "Starting Smart Macro..."
+            python smart_macro.py --auto-run FreeFire
+        env:
+          TARGET_EMAIL: ${{ secrets.TARGET_EMAIL }}
+          LAYER1_SERPENT_PASSWORD: ${{ secrets.LAYER1_SERPENT_PASSWORD }}
+          LAYER2_CHACHA_PASSWORD: ${{ secrets.LAYER2_CHACHA_PASSWORD }}
+          LAYER3_AES_PASSWORD: ${{ secrets.LAYER3_AES_PASSWORD }}
