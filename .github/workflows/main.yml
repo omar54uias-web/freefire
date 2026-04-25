@@ -24,7 +24,7 @@ jobs:
           
       - name: Install Python Dependencies
         run: |
-          pip install requests uiautomator2
+          pip install requests uiautomator2 cryptography python-dotenv pyserpent
 
       - name: Install and Start Tailscale
         run: |
