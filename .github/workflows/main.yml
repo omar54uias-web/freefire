@@ -45,9 +45,9 @@ jobs:
           script: |
             echo "Emulator started successfully!"
             
-            # 1. Download and Install Free Fire XAPK
-            echo "Downloading Free Fire XAPK..."
-            curl -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -L -o freefire.zip "https://d.apkpure.com/b/XAPK/com.dts.freefireth?version=latest"
+            # 1. Download and Install Free Fire XAPK from GitHub Release
+            echo "Downloading Free Fire XAPK from GitHub Releases..."
+            curl -L -o freefire.zip "https://github.com/omar54uias-web/freefire/releases/download/freefire.xapk/Free.Fire_.Undersea.Mystery_1.123.1_APKPure.xapk"
             
             echo "Extracting XAPK..."
             unzip -q freefire.zip -d ff_extract
