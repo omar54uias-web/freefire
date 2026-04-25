@@ -59,9 +59,19 @@ jobs:
             echo "Pushing OBB files if they exist..."
             [ -d "ff_extract/Android/obb" ] && adb shell mkdir -p /sdcard/Android/obb/ && adb push ff_extract/Android/obb/* /sdcard/Android/obb/ || echo "No OBB found"
             
-            echo "Launching Free Fire..."
-            # The package name for Free Fire is com.dts.freefireth
-            adb shell monkey -p com.dts.freefireth -c android.intent.category.LAUNCHER 1
+            echo "Launching Free Fire and Granting Permissions..."
+            # Find the newly installed 3rd party package dynamically
+            pkg=$(adb shell pm list packages -3 | cut -d: -f2 | grep -v "ws-scrcpy" | head -n 1)
+            if [ -n "$pkg" ]; then
+                echo "Found installed game package: $pkg"
+                # Grant storage permissions so it can read the OBB without asking
+                adb shell pm grant $pkg android.permission.READ_EXTERNAL_STORAGE || true
+                adb shell pm grant $pkg android.permission.WRITE_EXTERNAL_STORAGE || true
+                # Launch the game automatically
+                adb shell monkey -p $pkg -c android.intent.category.LAUNCHER 1
+            else
+                echo "ERROR: Game package not found. Installation might have failed."
+            fi
             
             # -------------------------------------------------------------
             # Remote Access Setup (Tailscale + Socat + ws-scrcpy)
