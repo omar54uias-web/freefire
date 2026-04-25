@@ -5,12 +5,18 @@ on:
 
 jobs:
   run-emulator:
-    runs-on: macos-13 # macOS-13 is Intel-based (x86_64) which supports the x86_64 emulator hardware acceleration
+    runs-on: ubuntu-latest # Linux runners are much faster to start and we can use KVM for hardware acceleration
     
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -27,7 +33,7 @@ jobs:
           version: latest
 
       - name: Install Socat
-        run: brew install socat
+        run: sudo apt-get update && sudo apt-get install -y socat
 
       # The android-emulator-runner will download the system image, create an emulator, start it, and run the script
       - name: Run Android Emulator and Execute Script
@@ -81,8 +87,8 @@ jobs:
             echo "Setting up ws-scrcpy for Browser Control..."
             git clone https://github.com/NetrisTV/ws-scrcpy.git
             cd ws-scrcpy && npm install && npm run dist
-            # Inject CSS (macOS compatible sed)
-            find ./dist -name "index.html" -type f -exec sed -i '' "s|</head>|<style>body{background-color:#121212!important;color:#fff!important;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0}a{text-decoration:none;color:#fff!important;display:block;padding:20px;margin:10px;background:#333;border-radius:15px;font-size:1.2rem;text-align:center;width:85%;max-width:350px;box-shadow:0 4px 6px rgba(0,0,0,0.5);transition:transform 0.1s}a[href*='devtools'],a[href*='shell'],a[href*='proxy'],a[href*='files'],a[href*='tiny']{display:none!important}a[href*='configure']{background:#28a745!important;font-weight:bold}a[href*='H264']{background:#007bff!important;font-weight:bold;font-size:1.4rem}h3,div{text-align:center;width:100%}.device-state{font-size:2rem;margin-bottom:20px}</style></head>|" {} +
+            # Inject CSS (Linux compatible sed)
+            find ./dist -name "index.html" -type f -exec sed -i "s|</head>|<style>body{background-color:#121212!important;color:#fff!important;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0}a{text-decoration:none;color:#fff!important;display:block;padding:20px;margin:10px;background:#333;border-radius:15px;font-size:1.2rem;text-align:center;width:85%;max-width:350px;box-shadow:0 4px 6px rgba(0,0,0,0.5);transition:transform 0.1s}a[href*='devtools'],a[href*='shell'],a[href*='proxy'],a[href*='files'],a[href*='tiny']{display:none!important}a[href*='configure']{background:#28a745!important;font-weight:bold}a[href*='H264']{background:#007bff!important;font-weight:bold;font-size:1.4rem}h3,div{text-align:center;width:100%}.device-state{font-size:2rem;margin-bottom:20px}</style></head>|" {} +
             nohup npm start > ../ws-scrcpy.log 2>&1 &
             cd ..
             
