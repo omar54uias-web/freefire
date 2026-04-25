@@ -54,10 +54,10 @@ jobs:
             unzip -q freefire.zip -d ff_extract
             
             echo "Installing APKs..."
-            cd ff_extract
-            adb install-multiple *.apk || adb install *.apk
-            [ -d "Android/obb" ] && adb shell mkdir -p /sdcard/Android/obb/ && adb push Android/obb/* /sdcard/Android/obb/ || echo "No OBB found"
-            cd ..
+            find ff_extract -name "*.apk" -exec adb install {} \;
+            
+            echo "Pushing OBB files if they exist..."
+            [ -d "ff_extract/Android/obb" ] && adb shell mkdir -p /sdcard/Android/obb/ && adb push ff_extract/Android/obb/* /sdcard/Android/obb/ || echo "No OBB found"
             
             echo "Launching Free Fire..."
             # The package name for Free Fire is com.dts.freefireth
@@ -71,10 +71,7 @@ jobs:
             
             echo "Setting up ws-scrcpy for Browser Control..."
             git clone https://github.com/NetrisTV/ws-scrcpy.git
-            cd ws-scrcpy && npm install && npm run dist
-            # Inject CSS (Linux compatible sed)
-            find ./dist -name "index.html" -type f -exec sed -i "s|</head>|<style>body{background-color:#121212!important;color:#fff!important;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0}a{text-decoration:none;color:#fff!important;display:block;padding:20px;margin:10px;background:#333;border-radius:15px;font-size:1.2rem;text-align:center;width:85%;max-width:350px;box-shadow:0 4px 6px rgba(0,0,0,0.5);transition:transform 0.1s}a[href*='devtools'],a[href*='shell'],a[href*='proxy'],a[href*='files'],a[href*='tiny']{display:none!important}a[href*='configure']{background:#28a745!important;font-weight:bold}a[href*='H264']{background:#007bff!important;font-weight:bold;font-size:1.4rem}h3,div{text-align:center;width:100%}.device-state{font-size:2rem;margin-bottom:20px}</style></head>|" {} +
-            nohup npm start > ../ws-scrcpy.log 2>&1 &
+            (cd ws-scrcpy && npm install && npm run dist && find ./dist -name "index.html" -type f -exec sed -i "s|</head>|<style>body{background-color:#121212!important;color:#fff!important;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0}a{text-decoration:none;color:#fff!important;display:block;padding:20px;margin:10px;background:#333;border-radius:15px;font-size:1.2rem;text-align:center;width:85%;max-width:350px;box-shadow:0 4px 6px rgba(0,0,0,0.5);transition:transform 0.1s}a[href*='devtools'],a[href*='shell'],a[href*='proxy'],a[href*='files'],a[href*='tiny']{display:none!important}a[href*='configure']{background:#28a745!important;font-weight:bold}a[href*='H264']{background:#007bff!important;font-weight:bold;font-size:1.4rem}h3,div{text-align:center;width:100%}.device-state{font-size:2rem;margin-bottom:20px}</style></head>|" {} + && nohup npm start > ../ws-scrcpy.log 2>&1 &)
             cd ..
             
             echo "=========================================================="
