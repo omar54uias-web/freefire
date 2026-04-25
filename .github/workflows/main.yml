@@ -43,6 +43,7 @@ jobs:
           arch: x86_64
           profile: Nexus 6
           script: |
+            cat << 'EOF' > run_emu.sh
             echo "Emulator started successfully!"
             
             # 1. Download and Install Free Fire XAPK from GitHub Release
@@ -54,23 +55,8 @@ jobs:
             
             echo "Installing APKs..."
             cd ff_extract
-            apks=$(find . -name "*.apk")
-            apk_count=$(echo "$apks" | wc -l)
-            
-            if [ "$apk_count" -gt 1 ]; then
-              echo "Installing multiple split APKs..."
-              apks_spaced=$(echo $apks | tr '\n' ' ')
-              adb install-multiple $apks_spaced
-            else
-              echo "Installing single APK..."
-              adb install $apks
-            fi
-            
-            if [ -d "Android/obb" ]; then
-              echo "Pushing OBB files..."
-              adb shell mkdir -p /sdcard/Android/obb/
-              adb push Android/obb/* /sdcard/Android/obb/
-            fi
+            adb install-multiple *.apk || adb install *.apk
+            [ -d "Android/obb" ] && adb shell mkdir -p /sdcard/Android/obb/ && adb push Android/obb/* /sdcard/Android/obb/ || echo "No OBB found"
             cd ..
             
             echo "Launching Free Fire..."
@@ -111,6 +97,8 @@ jobs:
             # 3. Run your custom macro
             echo "Starting Smart Macro..."
             python smart_macro.py --auto-run FreeFire
+            EOF
+            bash run_emu.sh
         env:
           TARGET_EMAIL: ${{ secrets.TARGET_EMAIL }}
           LAYER1_SERPENT_PASSWORD: ${{ secrets.LAYER1_SERPENT_PASSWORD }}
