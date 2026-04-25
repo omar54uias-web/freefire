@@ -38,10 +38,11 @@ jobs:
       - name: Run Android Emulator and Execute Script
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 25 # Android 7.1 (Nougat) - Lighter and faster for CI
-          target: google_apis # Contains Google APIs
+          api-level: 29 # Android 10 - Better compatibility and ARM translation
+          target: google_apis
           arch: x86_64
           profile: Nexus 6
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 4096
           script: |
             cat << 'EOF' > run_emu.sh
             echo "Emulator started successfully!"
