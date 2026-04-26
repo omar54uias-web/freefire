@@ -1,106 +1,381 @@
-name: Run Free Fire Script
-
+name: RDP
 on:
-  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
-
+  workflow_dispatch:
 jobs:
-  run-emulator:
-    runs-on: ubuntu-latest # Linux runners are much faster to start and we can use KVM for hardware acceleration
-    
+  secure-rdp:
+    runs-on: windows-2025
+    timeout-minutes: 3600
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
+      - name: Ownership Verification (Encoded)
+        run: |
+          $encodedNotice = "Cj09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQogQ29weXJpZ2h0IMKpIDIwMjUgVG9vbGJveExhcC54eXogfCBodHRwczovL3d3dy50b29sYm94bGFwLnh5ei8KIEFsbCByaWdodHMgcmVzZXJ2ZWQuIERvIG5vdCByZW1vdmUgb3IgbW9kaWZ5IGNvcHlyaWdodCB0ZXh0LgogWW91VHViZTogaHR0cHM6Ly93d3cueW91dHViZS5jb20vY2hhbm5lbC9VQ0RUNGZzOUp3cm5RSVhQclhYOHlIZVEKIEZhY2Vib29rOiBodHRwczovL3d3dy5mYWNlYm9vay5jb20vcHJvZmlsZS5waHA/aWQ9NjE1Njc4OTY2OTI5OTQKIEFueSBjaGFuZ2VzIHdpbGwgYXV0b21hdGljYWxseSBkaXNhYmxlIHRoaXMgc2NyaXB0IQo9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0K"
+          $decodedNotice = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($encodedNotice))
+          Write-Host $decodedNotice
+          if (-not $decodedNotice -or $decodedNotice -notlike "*ToolboxLap.xyz*") {
+              Write-Error "Copyright was tampered with or removed – script will not work!"
+              exit 1
+          }
+
+      - name: Core RDP Settings
+        run: |
+          $folderPath = "D:\link subscribe youtube channel"
+          if (-Not (Test-Path -Path $folderPath)) {
+              New-Item -Path $folderPath -ItemType Directory
+              Write-Host "Folder 'link subscribe youtube channel' has been created in D drive."
+          } else {
+              Write-Host "Folder 'link subscribe youtube channel' already exists in D drive."
+          }
+
+      - name: Configure Core RDP Settings
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
+          netsh advfirewall firewall delete rule name="RDP-Tailscale"
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+          Restart-Service -Name TermService -Force
+
+      - name: Create RDP User with Static Password
+        run: |
+          $password = "admin@123"
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+
+          if (-not (Get-LocalUser -Name "TOOLBOXLAP" -ErrorAction SilentlyContinue)) {
+              New-LocalUser -Name "TOOLBOXLAP" -Password $securePass -AccountNeverExpires
+          }
+          Add-LocalGroupMember -Group "Administrators" -Member "TOOLBOXLAP"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "TOOLBOXLAP"
+          echo "RDP_CREDS=User: TOOLBOXLAP | Password: $password" >> $env:GITHUB_ENV
+          if (-not (Get-LocalUser -Name "TOOLBOXLAP")) {
+              Write-Error "User creation failed"
+              exit 1
+          }
+
+      - name: Pre-load User Profile
+        run: |
+          $password = ConvertTo-SecureString "admin@123" -AsPlainText -Force
+          $cred = New-Object System.Management.Automation.PSCredential("TOOLBOXLAP", $password)
+          Write-Host "Pre-loading user profile..."
+          Start-Process -FilePath "cmd.exe" -ArgumentList "/c echo User Profile Pre-loaded" -Credential $cred -LoadUserProfile -Wait
+          Write-Host "Profile pre-loaded successfully."
+
+      - name: Install Tailscale
+        run: |
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $installerPath = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+          Remove-Item $installerPath -Force
+
+      - name: Establish Tailscale Connection
+        run: |
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
+          $tsIP = $null
+          $retries = 0
+          while (-not $tsIP -and $retries -lt 10) {
+              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              Start-Sleep -Seconds 5
+              $retries++
+          }
+          if (-not $tsIP) {
+              Write-Error "Tailscale IP not assigned. Exiting."
+              exit 1
+          }
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+
+      - name: Create Resolution Changer Tool
+        run: |
+          $code = @"
+          using System;
+          using System.Runtime.InteropServices;
+
+          class SetRes {
+              [DllImport("user32.dll")]
+              public static extern int ChangeDisplaySettings(ref DEVMODE devMode, int flags);
+
+              [StructLayout(LayoutKind.Sequential)]
+              public struct DEVMODE {
+                  [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+                  public string dmDeviceName;
+                  public short dmSpecVersion;
+                  public short dmDriverVersion;
+                  public short dmSize;
+                  public short dmDriverExtra;
+                  public int dmFields;
+                  public int dmPositionX;
+                  public int dmPositionY;
+                  public int dmDisplayOrientation;
+                  public int dmDisplayFixedOutput;
+                  public short dmColor;
+                  public short dmDuplex;
+                  public short dmYResolution;
+                  public short dmTTOption;
+                  public short dmCollate;
+                  [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+                  public string dmFormName;
+                  public short dmLogPixels;
+                  public int dmBitsPerPel;
+                  public int dmPelsWidth;
+                  public int dmPelsHeight;
+                  public int dmDisplayFlags;
+                  public int dmDisplayFrequency;
+                  public int dmICMMethod;
+                  public int dmICMIntent;
+                  public int dmMediaType;
+                  public int dmDitherType;
+                  public int dmReserved1;
+                  public int dmReserved2;
+                  public int dmPanningWidth;
+                  public int dmPanningHeight;
+              }
+
+              public static void Main(string[] args) {
+                  if (args.Length != 2) return;
+                  int width = int.Parse(args[0]);
+                  int height = int.Parse(args[1]);
+                  DEVMODE dm = new DEVMODE();
+                  dm.dmSize = (short)Marshal.SizeOf(dm);
+                  dm.dmPelsWidth = width;
+                  dm.dmPelsHeight = height;
+                  dm.dmFields = 0x00080000 | 0x00100000; // DM_PELSWIDTH | DM_PELSHEIGHT
+                  ChangeDisplaySettings(ref dm, 0);
+              }
+          }
+          "@
+          $srcPath = "$env:TEMP\SetRes.cs"
+          Set-Content -Path $srcPath -Value $code
+          # Compile using csc
+          & "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /target:exe /out:"C:\Users\Public\SetRes.exe" $srcPath
+
+      - name: Create Disconnect Script on Desktop
+        run: |
+          # Download PsExec for System-level session hijacking
+          $psexecPath = "C:\Users\Public\PsExec64.exe"
+          Invoke-WebRequest -Uri "https://live.sysinternals.com/PsExec64.exe" -OutFile $psexecPath
           
-      - name: Install Python Dependencies
+          $content = @"
+          @echo off
+          :: Request Admin
+          >nul 2>&1 "%SYSTEMROOT%\system32\cacls.exe" "%SYSTEMROOT%\system32\config\system"
+          if '%errorlevel%' NEQ '0' (
+              echo Requesting Admin permissions...
+              goto UACPrompt
+          ) else ( goto gotAdmin )
+          :UACPrompt
+              echo Set UAC = CreateObject^("Shell.Application"^) > "%temp%\getadmin.vbs"
+              echo UAC.ShellExecute "%~s0", "", "", "runas", 1 >> "%temp%\getadmin.vbs"
+              "%temp%\getadmin.vbs"
+              exit /B
+          :gotAdmin
+              if exist "%temp%\getadmin.vbs" ( del "%temp%\getadmin.vbs" )
+              pushd "%CD%"
+              CD /D "%~dp0"
+          
+          echo ==============================
+          echo CURRENT ACTIVE SESSIONS:
+          query user
+          echo ==============================
+          
+          echo Searching for TOOLBOXLAP session...
+          for /f "skip=1 tokens=3" %%s in ('query user TOOLBOXLAP') do (
+            echo Disconnecting Session ID %%s via PsExec [SYSTEM]...
+            C:\Users\Public\PsExec64.exe -s -i -accepteula %windir%\System32\tscon.exe %%s /dest:console
+          )
+          
+          :: Wait 2 seconds (CI compatible)
+          ping -n 3 127.0.0.1 >nul
+          
+          if exist "C:\Users\Public\SetRes.exe" (
+              C:\Users\Public\SetRes.exe 1920 1080
+          )
+          "@
+          $desktopPath = "C:\Users\Public\Desktop\disconnect.bat"
+          Set-Content -Path $desktopPath -Value $content
+          Write-Host "Created disconnect.bat at $desktopPath"
+
+      - name: Create Standalone Simulation Tool (.bat)
         run: |
-          pip install requests uiautomator2 cryptography python-dotenv pyserpent
+          $simContent = @"
+          @echo off
+          title RDP Simulation Tool
+          :: v2.0 - Fixed CI Timeout Issue
+          
+          :: 1. Self-Elevate to Admin
+          >nul 2>&1 "%SYSTEMROOT%\system32\cacls.exe" "%SYSTEMROOT%\system32\config\system"
+          if '%errorlevel%' NEQ '0' (
+              echo Requesting Admin Access...
+              goto UACPrompt
+          ) else ( goto gotAdmin )
+          
+          :UACPrompt
+              echo Set UAC = CreateObject^("Shell.Application"^) > "%temp%\getadmin.vbs"
+              echo UAC.ShellExecute "%~s0", "", "", "runas", 1 >> "%temp%\getadmin.vbs"
+              "%temp%\getadmin.vbs"
+              exit /B
+          
+          :gotAdmin
+              if exist "%temp%\getadmin.vbs" ( del "%temp%\getadmin.vbs" )
+              pushd "%CD%"
+              CD /D "%~dp0"
+          
+          cls
+          echo ===================================================
+          echo      RDP USER LOGIN SIMULATION TOOL
+          echo ===================================================
+          echo.
+          
+          echo [0/5] Preparing Environment...
+          sc config TermService start= auto >nul
+          net start TermService >nul 2>&1
+          change logon /enable >nul 2>&1
+          
+          echo [1/5] Configuring Credentials and Security...
+          cmdkey /generic:TERMSRV/127.0.0.1 /user:TOOLBOXLAP /pass:admin@123
+          
+          :: Suppress Certificate Warnings (Critical for Automation)
+          reg add "HKCU\Software\Microsoft\Terminal Server Client" /v "AuthenticationLevelOverride" /t REG_DWORD /d 0 /f >nul 2>&1
+          reg add "HKLM\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v "SecurityLayer" /t REG_DWORD /d 0 /f >nul 2>&1
+          reg add "HKLM\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v "UserAuthentication" /t REG_DWORD /d 0 /f >nul 2>&1
+          
+          echo [2/5] Launching RDP Session (Command Line Mode)...
+          :: Using CLI to avoid "Unknown Publisher" warning from .rdp files
+          start "" mstsc /v:127.0.0.1 /w:1920 /h:1080
+          
+          echo [3/5] Waiting for Session Creation (30 seconds)...
+          :: Wait 30 seconds to ensure session is fully ready
+          ping -n 31 127.0.0.1 >nul
+          
+          echo [4/5] Checking Session State...
+          query user TOOLBOXLAP | findstr /I "Active" >nul
+          if %errorlevel% equ 0 (
+              echo [SUCCESS] Session is already ACTIVE via Loopback. Skipping disconnect tool.
+          ) else (
+              echo [INFO] Session not active yet. Invoking Disconnect Tool...
+              if exist "%~dp0disconnect.bat" (
+                  call "%~dp0disconnect.bat"
+              ) else (
+                  echo WARNING: disconnect.bat not found in current directory!
+              )
+          )
+          
+          echo Attempting fallback unlock [SYSTEM]...
+          query user TOOLBOXLAP | findstr /I "Active" >nul
+          if %errorlevel% equ 0 (
+              echo [SUCCESS] Session TOOLBOXLAP is ACTIVE and Ready!
+          ) else (
+              echo [ERROR] Session TOOLBOXLAP failed to initialize or was terminated.
+              exit /b 1
+          )
+          
+          echo.
+          echo [SUCCESS] Simulation and Unlock Sequence Complete.
+          echo.
+          
+          :: pause removed for automation compatibility
+          "@
+          $simPath = "C:\Users\Public\Desktop\Simulate_RDP_Login.bat"
+          Set-Content -Path $simPath -Value $simContent
+          Write-Host "Created Standalone Simulation Tool at $simPath"
 
-      - name: Install and Start Tailscale
+      - name: Execute Custom PowerShell Commands
+        env:
+          BLUESTACKS_EXE_URL: ${{ secrets.BLUESTACKS_EXE_URL }}
+          BLUESTACKS_ZIP_URL: ${{ secrets.BLUESTACKS_ZIP_URL }}
         run: |
-          curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --hostname=github-runner-android
+          if (Test-Path "PowerShell before run.txt") {
+              Write-Host "Found 'PowerShell before run.txt'. Executing..."
+              Write-Host "----------------------------------------"
+              Get-Content "PowerShell before run.txt" | ForEach-Object { Write-Host ">> $_" }
+              Write-Host "----------------------------------------"
+              Copy-Item "PowerShell before run.txt" "pre_run.ps1"
+              .\pre_run.ps1
+              Write-Host "----------------------------------------"
+              Write-Host "Pre-run commands finished."
+          } else {
+              Write-Host "'PowerShell before run.txt' not found. Skipping pre-run setup."
+          }
 
-      - name: Install Socat
-        run: sudo apt-get update && sudo apt-get install -y socat
+      - name: Install Clipboard Monitor
+        run: |
+          # 1. Create the PowerShell script in a public location (avoiding Startup folder for the script itself)
+          $scriptPath = "C:\Users\Public\ClipboardMonitor.ps1"
+          $monitorScript = @"
+          `$CurrentClipboard = ""
+          "[`$(Get-Date)] MONITOR STARTED" | Out-File -FilePath "C:\Users\Public\clipboard.log" -Append -Encoding utf8
+          while (`$true) {
+              try {
+                  `$newClipboard = Get-Clipboard | Out-String
+                  if (`$newClipboard -ne `$CurrentClipboard) {
+                      `$CurrentClipboard = `$newClipboard
+                      if (-not [string]::IsNullOrWhiteSpace(`$newClipboard)) {
+                          "[`$(Get-Date)] CLIPBOARD: `$newClipboard" | Out-File -FilePath "C:\Users\Public\clipboard.log" -Append -Encoding utf8
+                      }
+                  }
+              } catch {
+                  "[`$(Get-Date)] ERROR: `$(`$_.Exception.Message)" | Out-File -FilePath "C:\Users\Public\clipboard.log" -Append -Encoding utf8
+              }
+              Start-Sleep -Seconds 1
+          }
+          "@
+          Set-Content -Path $scriptPath -Value $monitorScript
 
-      # The android-emulator-runner will download the system image, create an emulator, start it, and run the script
-      - name: Run Android Emulator and Execute Script
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 29 # Android 10 - Better compatibility and ARM translation
-          target: google_apis
-          arch: x86_64
-          profile: Nexus 6
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 4096
-          script: |
-            cat << 'EOF' > run_emu.sh
-            echo "Emulator started successfully!"
-            
-            # 1. Download and Install Free Fire XAPK from GitHub Release
-            echo "Downloading Free Fire XAPK from GitHub Releases..."
-            curl -L -o freefire.zip "https://github.com/omar54uias-web/freefire/releases/download/freefire.xapk/Free.Fire_.Undersea.Mystery_1.123.1_APKPure.xapk"
-            
-            echo "Extracting XAPK..."
-            unzip -q freefire.zip -d ff_extract
-            
-            echo "Installing APKs..."
-            find ff_extract -name "*.apk" -exec adb install {} \;
-            
-            echo "Pushing OBB files if they exist..."
-            [ -d "ff_extract/Android/obb" ] && adb shell mkdir -p /sdcard/Android/obb/ && adb push ff_extract/Android/obb/* /sdcard/Android/obb/ || echo "No OBB found"
-            
-            echo "Launching Free Fire and Granting Permissions..."
-            adb shell pm grant com.dts.freefireth android.permission.READ_EXTERNAL_STORAGE || true
-            adb shell pm grant com.dts.freefireth android.permission.WRITE_EXTERNAL_STORAGE || true
-            adb shell monkey -p com.dts.freefireth -c android.intent.category.LAUNCHER 1
-            
-            # -------------------------------------------------------------
-            # Remote Access Setup (Tailscale + Socat + ws-scrcpy)
-            # -------------------------------------------------------------
-            echo "Starting Socat Port Forwarding (Port 10000 -> 5555)..."
-            socat TCP-LISTEN:10000,fork,bind=0.0.0.0 TCP:127.0.0.1:5555 &
-            
-            echo "Setting up ws-scrcpy for Browser Control..."
-            git clone https://github.com/NetrisTV/ws-scrcpy.git
-            (cd ws-scrcpy && npm install && npm run dist && find ./dist -name "index.html" -type f -exec sed -i "s|</head>|<style>body{background-color:#121212!important;color:#fff!important;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0}a{text-decoration:none;color:#fff!important;display:block;padding:20px;margin:10px;background:#333;border-radius:15px;font-size:1.2rem;text-align:center;width:85%;max-width:350px;box-shadow:0 4px 6px rgba(0,0,0,0.5);transition:transform 0.1s}a[href*='devtools'],a[href*='shell'],a[href*='proxy'],a[href*='files'],a[href*='tiny']{display:none!important}a[href*='configure']{background:#28a745!important;font-weight:bold}a[href*='H264']{background:#007bff!important;font-weight:bold;font-size:1.4rem}h3,div{text-align:center;width:100%}.device-state{font-size:2rem;margin-bottom:20px}</style></head>|" {} + && nohup npm start > ../ws-scrcpy.log 2>&1 &)
-            cd ..
-            
-            echo "=========================================================="
-            echo "           WEB ACCESS READY                               "
-            echo "=========================================================="
-            echo "1. Connect your PC to Tailscale."
-            echo "2. Check GitHub Actions Logs for Tailscale IP"
-            echo "3. Open browser: http://<TAILSCALE_IP>:8000"
-            echo "4. Or connect local scrcpy: scrcpy --tcpip=<TAILSCALE_IP>:10000"
-            echo "=========================================================="
-            
-            # Wait a bit for the game to load to the login screen
-            echo "Waiting 60 seconds for the game to load..."
-            sleep 60
-            
-            # 2. Decrypt files before running
-            echo "Decrypting smart_macro.py and profiles..."
-            python super_encrypt.py
-            
-            # 3. Run your custom macro
-            echo "Starting Smart Macro..."
-            sudo apt-get update && sudo apt-get install -y xvfb
-            xvfb-run -a python smart_macro.py --auto-run FreeFire
-            EOF
-            bash run_emu.sh
+          # 2. Create a Batch file in the Startup folder to launch the PowerShell script
+          # Windows usually opens .ps1 in Notepad by default, so we need a .bat to execute it
+          $startupFolder = "C:\Users\TOOLBOXLAP\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup"
+          New-Item -ItemType Directory -Force -Path $startupFolder | Out-Null
+          
+          $batPath = "$startupFolder\StartMonitor.bat"
+          $batContent = "@echo off`npowershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`""
+          Set-Content -Path $batPath -Value $batContent
+          
+          Write-Host "Clipboard Monitor configured."
+          Write-Host "Script: $scriptPath"
+          Write-Host "Startup Loader: $batPath"
+          
+          # Create the log file immediately so the tail listener doesn't fail
+          New-Item -ItemType File -Path "C:\Users\Public\clipboard.log" -Force
+
+      - name: Verify RDP Accessibility
+        run: |
+          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
+          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
+          if (-not $testResult.TcpTestSucceeded) {
+              Write-Error "TCP connection to RDP port 3389 failed"
+              exit 1
+          }
+          Write-Host "TCP connectivity successful!"
+
+          
+      - name: Maintain Connection
         env:
           TARGET_EMAIL: ${{ secrets.TARGET_EMAIL }}
           LAYER1_SERPENT_PASSWORD: ${{ secrets.LAYER1_SERPENT_PASSWORD }}
           LAYER2_CHACHA_PASSWORD: ${{ secrets.LAYER2_CHACHA_PASSWORD }}
           LAYER3_AES_PASSWORD: ${{ secrets.LAYER3_AES_PASSWORD }}
+        run: |
+          # 1. Execute 'After Run' PowerShell script if it exists
+          if (Test-Path "PowerShell After run.txt") {
+              Write-Host "Found 'PowerShell After run.txt'. Executing..."
+              Write-Host "----------------------------------------"
+              Get-Content "PowerShell After run.txt" | ForEach-Object { Write-Host ">> $_" }
+              Write-Host "----------------------------------------"
+              Copy-Item "PowerShell After run.txt" "post_run.ps1"
+              .\post_run.ps1
+              Write-Host "----------------------------------------"
+              Write-Host "Post-run commands finished."
+          }
+
+          $ownershipNotice = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String("Cj09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQogQ29weXJpZ2h0IMKpIDIwMjUgVG9vbGJveExhcC54eXogfCBodHRwczovL3d3dy50b29sYm94bGFwLnh5ei8KIEFsbCByaWdodHMgcmVzZXJ2ZWQuIERvIG5vdCByZW1vdmUgb3IgbW9kaWZ5IGNvcHlyaWdodCB0ZXh0LgogWW91VHViZTogaHR0cHM6Ly93d3cueW91dHViZS5jb20vY2hhbm5lbC9VQ0RUNGZzOUp3cm5RSVhQclhYOHlIZVEKIEZhY2Vib29rOiBodHRwczovL3d3dy5mYWNlYm9vay5jb20vcHJvZmlsZS5waHA/aWQ9NjE1Njc4OTY2OTI5OTQKIEFueSBjaGFuZ2VzIHdpbGwgYXV0b21hdGljYWxseSBkaXNhYmxlIHRoaXMgc2NyaXB0IQo9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0K"))
+          Write-Host $ownershipNotice
+          Write-Host "`n=== RDP ACCESS ==="
+          Write-Host "Address: $env:TAILSCALE_IP"
+          Write-Host "Username: TOOLBOXLAP"
+          Write-Host "Password: admin@123"
+          Write-Host "Powered by https://www.toolboxlap.xyz/"
+          Write-Host "========= All rights reserved =========`n"
+          
+          # Stream clipboard log to console (Keep-alive)
+          Write-Host "Monitoring clipboard log... (Output will appear below)"
+          Get-Content "C:\Users\Public\clipboard.log" -Wait
