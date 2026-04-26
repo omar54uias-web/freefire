@@ -13,7 +13,9 @@ $sessionLine = (query user | Select-String "Active").ToString()
 if ($sessionLine -match "(\d+)\s+Active") {
     $sessionId = $matches[1]
     Write-Host "Running on Session ID: $sessionId"
-    C:\Users\Public\PsExec64.exe -s -i $sessionId -accepteula python smart_macro.py --auto-run FreeFire
+    $cwd = (Get-Location).Path
+    Write-Host "Working Directory: $cwd"
+    C:\Users\Public\PsExec64.exe -s -i $sessionId -w "$cwd" -accepteula python smart_macro.py --auto-run "FreeFire"
 } else {
     Write-Host "No active session found! Running normally..."
     python smart_macro.py --auto-run FreeFire
