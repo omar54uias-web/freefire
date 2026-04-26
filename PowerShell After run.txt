@@ -1,0 +1,20 @@
+Write-Host "Installing Python Dependencies for Macro..."
+pip install cryptography python-dotenv pyserpent pyautogui opencv-python Pillow
+
+Write-Host "Decrypting Smart Macro and Profiles..."
+python super_encrypt.py
+
+Write-Host "Creating temporary .env file for Macro secrets..."
+"TARGET_EMAIL=$env:TARGET_EMAIL" | Out-File -FilePath ".env" -Encoding utf8
+
+Write-Host "Starting Smart Macro on the ACTIVE Desktop (so it can see the screen)..."
+# Find the active session ID (which is attached to the console)
+$sessionLine = (query user | Select-String "Active").ToString()
+if ($sessionLine -match "(\d+)\s+Active") {
+    $sessionId = $matches[1]
+    Write-Host "Running on Session ID: $sessionId"
+    C:\Users\Public\PsExec64.exe -s -i $sessionId -accepteula python smart_macro.py --auto-run FreeFire
+} else {
+    Write-Host "No active session found! Running normally..."
+    python smart_macro.py --auto-run FreeFire
+}

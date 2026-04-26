@@ -1,0 +1,16 @@
+Write-Host "Checking secrets..."
+if (-not $env:BLUESTACKS_EXE_URL -or -not $env:BLUESTACKS_ZIP_URL) {
+    Write-Error "ERROR: BLUESTACKS_EXE_URL or BLUESTACKS_ZIP_URL is not set in GitHub Secrets!"
+    exit 1
+}
+
+Write-Host "Downloading BlueStacks Installer..."
+Invoke-WebRequest -Uri $env:BLUESTACKS_EXE_URL -OutFile "C:\Users\Public\Desktop\BSX-Setup.exe"
+
+Write-Host "Installing gdown for fast Google Drive downloads..."
+pip install gdown
+
+Write-Host "Downloading Pre-configured BlueStacks Data (ZIP) from Google Drive..."
+gdown $env:BLUESTACKS_ZIP_URL -O "C:\Users\Public\Desktop\BlueStacks_msi5.zip"
+
+Write-Host "Downloads complete! The macro will handle the installation and extraction."
