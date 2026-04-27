@@ -1,8 +1,5 @@
 Write-Host "Installing Python Dependencies for Macro..."
-pip install cryptography python-dotenv pyserpent pyautogui opencv-python Pillow
-
-Write-Host "Decrypting Smart Macro and Profiles..."
-python super_encrypt.py
+pip install python-dotenv pyserpent pyautogui opencv-python Pillow
 
 Write-Host "Creating temporary .env file for Macro secrets..."
 "TARGET_EMAIL=$env:TARGET_EMAIL" | Out-File -FilePath ".env" -Encoding utf8
@@ -13,10 +10,11 @@ $sessionLine = (query user | Select-String "Active").ToString()
 if ($sessionLine -match "(\d+)\s+Active") {
     $sessionId = $matches[1]
     Write-Host "Running on Session ID: $sessionId"
-    $cwd = (Get-Location).Path
+    $cwd = "C:\Users\Public\Desktop"
     Write-Host "Working Directory: $cwd"
-    C:\Users\Public\PsExec64.exe -s -i $sessionId -w "$cwd" -accepteula python smart_macro.py --auto-run "FreeFire"
+    C:\Users\Public\PsExec64.exe -s -i $sessionId -w "$cwd" -accepteula python "C:\Users\Public\Desktop\smart_macro.py" --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
 } else {
     Write-Host "No active session found! Running normally..."
-    python smart_macro.py --auto-run FreeFire
+    Set-Location "C:\Users\Public\Desktop"
+    python smart_macro.py --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
 }

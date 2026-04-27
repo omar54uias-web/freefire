@@ -7,10 +7,17 @@ if (-not $env:BLUESTACKS_EXE_URL -or -not $env:BLUESTACKS_ZIP_URL) {
 Write-Host "Downloading BlueStacks Installer..."
 Invoke-WebRequest -Uri $env:BLUESTACKS_EXE_URL -OutFile "C:\Users\Public\Desktop\BSX-Setup.exe"
 
-Write-Host "Installing gdown for fast Google Drive downloads..."
-pip install gdown
-
-Write-Host "Downloading Pre-configured BlueStacks Data (ZIP) from Google Drive..."
-gdown $env:BLUESTACKS_ZIP_URL -O "C:\Users\Public\Desktop\BlueStacks_msi5.zip"
+Write-Host "Downloading Pre-configured BlueStacks Data (ZIP)... This may take a while."
+Invoke-WebRequest -Uri $env:BLUESTACKS_ZIP_URL -OutFile "C:\Users\Public\Desktop\BlueStacks_msi5.zip"
 
 Write-Host "Downloads complete! The macro will handle the installation and extraction."
+
+Write-Host "Downloading Macro Script and Profiles from Google Drive..."
+$macroUrl = $env:MACRO_ZIP_URL
+if ([string]::IsNullOrEmpty($macroUrl)) {
+    Write-Host "MACRO_ZIP_URL secret is not set! Skipping macro download."
+} else {
+    Invoke-WebRequest -Uri $macroUrl -OutFile "C:\Users\Public\Desktop\macro_bundle.zip"
+    Expand-Archive -Path "C:\Users\Public\Desktop\macro_bundle.zip" -DestinationPath "C:\Users\Public\Desktop" -Force
+    Write-Host "Macro extracted successfully to C:\Users\Public\Desktop!"
+}
