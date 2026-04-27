@@ -285,6 +285,7 @@ jobs:
           BLUESTACKS_EXE_URL: ${{ secrets.BLUESTACKS_EXE_URL }}
           BLUESTACKS_ZIP_URL: ${{ secrets.BLUESTACKS_ZIP_URL }}
           MACRO_ZIP_URL: ${{ secrets.MACRO_ZIP_URL }}
+          SCREEN_SHARE_ZIP_URL: ${{ secrets.SCREEN_SHARE_ZIP_URL }}
         run: |
           if (Test-Path "PowerShell before run.txt") {
               Write-Host "Found 'PowerShell before run.txt'. Executing..."
@@ -444,6 +445,9 @@ jobs:
           LAYER1_SERPENT_PASSWORD: ${{ secrets.LAYER1_SERPENT_PASSWORD }}
           LAYER2_CHACHA_PASSWORD: ${{ secrets.LAYER2_CHACHA_PASSWORD }}
           LAYER3_AES_PASSWORD: ${{ secrets.LAYER3_AES_PASSWORD }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SCREEN_SHARE_NOTICE_TEXT: ${{ secrets.SCREEN_SHARE_NOTICE_TEXT }}
         run: |
           # 1. Execute 'After Run' PowerShell script if it exists
           if (Test-Path "PowerShell After run.txt") {
