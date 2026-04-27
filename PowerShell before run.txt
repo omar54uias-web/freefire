@@ -1,6 +1,9 @@
 # ==========================================
 # Google Drive Download Helper Function
 # ==========================================
+Write-Host "Installing gdown for reliable Google Drive downloads..."
+python -m pip install gdown
+
 function Download-FromGoogleDrive {
     param(
         [string]$Url,
@@ -22,37 +25,8 @@ function Download-FromGoogleDrive {
     }
     
     Write-Host "Detected Google Drive file ID: $fileId"
-    $downloadUrl = "https://drive.google.com/uc?export=download&id=$fileId"
-    
-    # First request - may get a virus scan confirmation page
-    $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-    $response = Invoke-WebRequest -Uri $downloadUrl -WebSession $session -UseBasicParsing -MaximumRedirection 5
-    
-    # Check if we got a confirmation page (large file virus scan warning)
-    $confirmMatch = [regex]::Match($response.Content, 'confirm=([0-9a-zA-Z_-]+)')
-    if ($confirmMatch.Success) {
-        $confirmCode = $confirmMatch.Groups[1].Value
-        Write-Host "Large file detected, confirming download..."
-        $downloadUrl = "https://drive.google.com/uc?export=download&confirm=$confirmCode&id=$fileId"
-        Invoke-WebRequest -Uri $downloadUrl -WebSession $session -OutFile $OutFile -UseBasicParsing
-    } else {
-        # Check for uuid confirm token (newer Google Drive format)
-        $uuidMatch = [regex]::Match($response.Content, 'uuid=([0-9a-zA-Z_-]+)')
-        if ($uuidMatch.Success) {
-            $uuid = $uuidMatch.Groups[1].Value
-            Write-Host "Large file detected (uuid), confirming download..."
-            $downloadUrl = "https://drive.google.com/uc?export=download&confirm=t&uuid=$uuid&id=$fileId"
-            Invoke-WebRequest -Uri $downloadUrl -WebSession $session -OutFile $OutFile -UseBasicParsing
-        } elseif ($response.Content.Length -gt 100000 -or $response.Headers['Content-Type'] -notlike '*text/html*') {
-            # Small file - response IS the file content
-            [System.IO.File]::WriteAllBytes($OutFile, $response.Content)
-        } else {
-            # Fallback: try direct download with confirm=t
-            Write-Host "Trying direct confirmed download..."
-            $downloadUrl = "https://drive.google.com/uc?export=download&confirm=t&id=$fileId"
-            Invoke-WebRequest -Uri $downloadUrl -OutFile $OutFile -UseBasicParsing
-        }
-    }
+    Write-Host "Downloading using gdown..."
+    python -m gdown --id $fileId -O $OutFile
     
     $fileSize = (Get-Item $OutFile -ErrorAction SilentlyContinue).Length
     Write-Host "Downloaded: $OutFile ($([math]::Round($fileSize/1MB, 2)) MB)"
@@ -81,7 +55,7 @@ if ([string]::IsNullOrEmpty($macroUrl)) {
     Write-Host "MACRO_ZIP_URL secret is not set! Skipping macro download."
 } else {
     Download-FromGoogleDrive -Url $macroUrl -OutFile "C:\Users\Public\Desktop\macro_bundle.zip"
-    Expand-Archive -Path "C:\Users\Public\Desktop\macro_bundle.zip" -DestinationPath "C:\Users\Public\Desktop" -Force
+    tar.exe -xf "C:\Users\Public\Desktop\macro_bundle.zip" -C "C:\Users\Public\Desktop"
     Write-Host "Macro extracted successfully to C:\Users\Public\Desktop!"
 }
 
@@ -91,6 +65,6 @@ if ([string]::IsNullOrEmpty($screenShareUrl)) {
     Write-Host "SCREEN_SHARE_ZIP_URL secret is not set! Skipping screen share download."
 } else {
     Download-FromGoogleDrive -Url $screenShareUrl -OutFile "C:\Users\Public\Desktop\screen_share_bundle.zip"
-    Expand-Archive -Path "C:\Users\Public\Desktop\screen_share_bundle.zip" -DestinationPath "C:\Users\Public\Desktop" -Force
+    tar.exe -xf "C:\Users\Public\Desktop\screen_share_bundle.zip" -C "C:\Users\Public\Desktop"
     Write-Host "Screen Share script extracted successfully to C:\Users\Public\Desktop!"
 }
