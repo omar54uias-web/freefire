@@ -1,25 +1,155 @@
 Write-Host "Installing Python Dependencies for Macro..."
-pip install python-dotenv pyserpent pyautogui opencv-python Pillow
+pip install python-dotenv pyserpent pyautogui opencv-python Pillow pynput requests pyperclip
+
+$desktopRoot = "C:\Users\Public\Desktop"
+$profileName = "FreeFire"
+
+function Resolve-MacroRoot {
+    param(
+        [string]$BaseDir,
+        [string]$ProfileName
+    )
+
+    $candidates = New-Object System.Collections.Generic.List[string]
+
+    $rootScript = Join-Path $BaseDir "smart_macro.py"
+    if (Test-Path $rootScript) {
+        $candidates.Add($BaseDir)
+    }
+
+    Get-ChildItem -Path $BaseDir -Filter "smart_macro.py" -Recurse -File -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            $candidates.Add($_.Directory.FullName)
+        }
+
+    foreach ($candidate in ($candidates | Select-Object -Unique)) {
+        $profileConfig = Join-Path $candidate "profiles\$ProfileName\config.json"
+        if (Test-Path $profileConfig) {
+            return $candidate
+        }
+    }
+
+    foreach ($candidate in ($candidates | Select-Object -Unique)) {
+        if (Test-Path (Join-Path $candidate "smart_macro.py")) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Get-SessionObjects {
+    param([string[]]$Lines)
+
+    $sessions = @()
+    foreach ($line in $Lines) {
+        if ($line -match '^\s*>?\s*(?<user>\S+)\s+(?<session>\S+)\s+(?<id>\d+)\s+(?<state>Active|Disc)\b') {
+            $sessions += [pscustomobject]@{
+                User        = $matches['user']
+                SessionName = $matches['session']
+                Id          = [int]$matches['id']
+                State       = $matches['state']
+            }
+        }
+    }
+
+    return $sessions
+}
+
+$macroRoot = Resolve-MacroRoot -BaseDir $desktopRoot -ProfileName $profileName
+if (-not $macroRoot) {
+    Write-Error "Could not locate smart_macro.py under $desktopRoot"
+    exit 1
+}
+
+$macroScript = Join-Path $macroRoot "smart_macro.py"
+$profileConfig = Join-Path $macroRoot "profiles\$profileName\config.json"
+$envFilePath = Join-Path $macroRoot ".env"
+$macroLogPath = Join-Path $macroRoot "smart_macro_runtime.log"
+$launcherPath = Join-Path $macroRoot "launch_smart_macro.cmd"
+
+Write-Host "Macro root resolved to: $macroRoot"
+Write-Host "Macro script path: $macroScript"
+Write-Host "Profile config path: $profileConfig"
+Write-Host "Runtime log path: $macroLogPath"
+
+if (-not (Test-Path $profileConfig)) {
+    Write-Error "Profile '$profileName' was not found at $profileConfig"
+    Write-Host "Desktop folders detected:"
+    Get-ChildItem -Path $desktopRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object { Write-Host " - $($_.FullName)" }
+    exit 1
+}
 
 Write-Host "Creating temporary .env file in Macro directory..."
-"TARGET_EMAIL=$env:TARGET_EMAIL" | Out-File -FilePath "C:\Users\Public\Desktop\.env" -Encoding utf8
+"TARGET_EMAIL=$env:TARGET_EMAIL" | Out-File -FilePath $envFilePath -Encoding utf8
 
-# Get full path to python.exe (SYSTEM account might not have it in PATH)
 $pythonPath = (Get-Command python -ErrorAction SilentlyContinue).Source
 if (-not $pythonPath) {
     $pythonPath = "python"
 }
 Write-Host "Python path: $pythonPath"
 
-Write-Host "Starting Smart Macro on the ACTIVE Desktop (so it can see the screen)..."
-# Find the active session ID (which is attached to the console)
-$sessionLine = (query user | Select-String "Active").ToString()
-if ($sessionLine -match "(\d+)\s+Active") {
-    $sessionId = $matches[1]
-    Write-Host "Running on Session ID: $sessionId"
-    C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -accepteula "$pythonPath" "C:\Users\Public\Desktop\smart_macro.py" --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
+if (-not (Test-Path "C:\Users\Public\PsExec64.exe")) {
+    Write-Error "PsExec64.exe was not found at C:\Users\Public\PsExec64.exe"
+    exit 1
+}
+
+Write-Host "Current sessions:"
+$rawSessions = query user
+$rawSessions | ForEach-Object { Write-Host $_ }
+
+$sessions = Get-SessionObjects -Lines $rawSessions
+if (-not $sessions) {
+    Write-Error "Failed to parse any user sessions from 'query user'."
+    exit 1
+}
+
+$preferredSession = $sessions | Where-Object { $_.User -eq "TOOLBOXLAP" -and $_.State -eq "Active" } | Select-Object -First 1
+if (-not $preferredSession) {
+    $preferredSession = $sessions | Where-Object { $_.State -eq "Active" } | Select-Object -First 1
+}
+
+if (-not $preferredSession) {
+    Write-Error "No ACTIVE session was found. The macro needs an interactive desktop."
+    exit 1
+}
+
+Write-Host "Selected session: User=$($preferredSession.User) Session=$($preferredSession.SessionName) ID=$($preferredSession.Id) State=$($preferredSession.State)"
+
+$launcherContent = @"
+@echo off
+cd /d "$macroRoot"
+echo [LAUNCH] %date% %time% >> "$macroLogPath"
+"$pythonPath" "$macroScript" --auto-run "$profileName" --email "$env:TARGET_EMAIL" >> "$macroLogPath" 2>&1
+echo [EXITCODE] %errorlevel% >> "$macroLogPath"
+"@
+Set-Content -Path $launcherPath -Value $launcherContent -Encoding ascii
+
+Add-Content -Path $macroLogPath -Value "============================================================"
+Add-Content -Path $macroLogPath -Value "PowerShell launcher started at $(Get-Date -Format s)"
+Add-Content -Path $macroLogPath -Value "Macro root: $macroRoot"
+Add-Content -Path $macroLogPath -Value "Profile config: $profileConfig"
+Add-Content -Path $macroLogPath -Value "Selected session ID: $($preferredSession.Id)"
+
+Write-Host "Launching Smart Macro in the interactive desktop..."
+C:\Users\Public\PsExec64.exe -s -i $preferredSession.Id -d -w "$macroRoot" -accepteula cmd.exe /c `"$launcherPath`"
+
+Start-Sleep -Seconds 10
+
+$macroProcesses = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.CommandLine -and $_.CommandLine -like "*smart_macro.py*"
+}
+
+if ($macroProcesses) {
+    Write-Host "Smart Macro is running. Matching processes:"
+    $macroProcesses | ForEach-Object {
+        Write-Host " - PID=$($_.ProcessId) Session=$($_.SessionId) CommandLine=$($_.CommandLine)"
+    }
 } else {
-    Write-Host "No active session found! Running normally..."
-    Set-Location "C:\Users\Public\Desktop"
-    & $pythonPath smart_macro.py --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
+    Write-Error "Smart Macro exited quickly or did not launch."
+    if (Test-Path $macroLogPath) {
+        Write-Host "Last lines from $macroLogPath:"
+        Get-Content $macroLogPath -Tail 80 | ForEach-Object { Write-Host $_ }
+    }
+    exit 1
 }
