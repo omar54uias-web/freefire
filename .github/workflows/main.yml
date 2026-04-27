@@ -387,8 +387,13 @@ jobs:
           }
 
           Write-Host "TOOLBOXLAP session detected: Name=$($toolboxSession.SessionName) ID=$($toolboxSession.Id) State=$($toolboxSession.State)"
-          Write-Host "Detaching the RDP session back to the console..."
-          C:\Users\Public\PsExec64.exe -s -i $toolboxSession.Id -accepteula $env:windir\System32\tscon.exe $toolboxSession.Id /dest:console
+          Write-Host "Attempting to detach the RDP session back to the console..."
+          & "C:\Users\Public\PsExec64.exe" -s -i $toolboxSession.Id -accepteula "$env:windir\System32\tscon.exe" $toolboxSession.Id /dest:console
+          $tsconExitCode = $LASTEXITCODE
+          if ($tsconExitCode -ne 0) {
+              Write-Warning "tscon/PsExec returned exit code $tsconExitCode. Continuing as long as TOOLBOXLAP stays ACTIVE."
+              $global:LASTEXITCODE = 0
+          }
 
           Start-Sleep -Seconds 5
           if (Test-Path "C:\Users\Public\SetRes.exe") {
@@ -407,6 +412,7 @@ jobs:
           if ($activeToolbox) {
               echo "TOOLBOXLAP_SESSION_ID=$($activeToolbox.Id)" >> $env:GITHUB_ENV
               echo "TOOLBOXLAP_SESSION_NAME=$($activeToolbox.SessionName)" >> $env:GITHUB_ENV
+              echo "TOOLBOXLAP_TSCON_EXIT_CODE=$tsconExitCode" >> $env:GITHUB_ENV
               Write-Host "Pinned active GUI session: $($activeToolbox.SessionName) / ID $($activeToolbox.Id)"
           }
 
@@ -414,6 +420,12 @@ jobs:
               Write-Error "TOOLBOXLAP is not ACTIVE after detach. Macro desktop would still be headless."
               exit 1
           }
+
+          if ($activeToolbox.SessionName -like "rdp-tcp*") {
+              Write-Warning "TOOLBOXLAP stayed on an RDP session instead of console. This is acceptable as long as the same session ID is reused."
+          }
+
+          $global:LASTEXITCODE = 0
 
       - name: Verify RDP Accessibility
         run: |
