@@ -114,6 +114,20 @@ if (-not $preferredSession) {
     exit 1
 }
 
+$pinnedSessionId = $null
+if ($env:TOOLBOXLAP_SESSION_ID) {
+    $pinnedSessionId = [int]$env:TOOLBOXLAP_SESSION_ID
+    Write-Host "Workflow pinned session ID detected: $pinnedSessionId"
+
+    $exactSession = $sessions | Where-Object { $_.Id -eq $pinnedSessionId } | Select-Object -First 1
+    if ($exactSession -and $exactSession.State -eq "Active") {
+        $preferredSession = $exactSession
+        Write-Host "Using pinned GUI session from workflow."
+    } else {
+        Write-Host "Pinned session is missing or not active anymore. Falling back to live detection..."
+    }
+}
+
 Write-Host "Selected session: User=$($preferredSession.User) Session=$($preferredSession.SessionName) ID=$($preferredSession.Id) State=$($preferredSession.State)"
 
 $launcherContent = @"
