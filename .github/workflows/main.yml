@@ -338,6 +338,71 @@ jobs:
           # Create the log file immediately so the tail listener doesn't fail
           New-Item -ItemType File -Path "C:\Users\Public\clipboard.log" -Force
 
+      - name: Prepare Detached GUI Desktop
+        run: |
+          Write-Host "Preparing detached GUI desktop for TOOLBOXLAP..."
+
+          sc.exe config TermService start= auto | Out-Null
+          Start-Service TermService
+          change logon /enable | Out-Null
+
+          cmdkey /generic:TERMSRV/127.0.0.1 /user:TOOLBOXLAP /pass:admin@123 | Out-Null
+          reg add "HKCU\Software\Microsoft\Terminal Server Client" /v "AuthenticationLevelOverride" /t REG_DWORD /d 0 /f | Out-Null
+          reg add "HKLM\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v "SecurityLayer" /t REG_DWORD /d 0 /f | Out-Null
+          reg add "HKLM\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v "UserAuthentication" /t REG_DWORD /d 0 /f | Out-Null
+
+          Write-Host "Launching loopback RDP session..."
+          $mstscProcess = Start-Process mstsc.exe -ArgumentList "/v:127.0.0.1 /w:1920 /h:1080" -PassThru
+          Start-Sleep -Seconds 35
+
+          $sessionOutput = query user
+          Write-Host "Sessions after loopback login:"
+          $sessionOutput | ForEach-Object { Write-Host $_ }
+
+          $toolboxSession = $null
+          foreach ($line in $sessionOutput) {
+              if ($line -match '^\s*>?\s*TOOLBOXLAP\s+\S+\s+(?<id>\d+)\s+(?<state>Active|Disc)\b') {
+                  $toolboxSession = [pscustomobject]@{
+                      Id    = $matches['id']
+                      State = $matches['state']
+                  }
+                  break
+              }
+          }
+
+          if (-not $toolboxSession) {
+              Write-Error "TOOLBOXLAP session was not created by loopback RDP."
+              exit 1
+          }
+
+          Write-Host "TOOLBOXLAP session detected: ID=$($toolboxSession.Id) State=$($toolboxSession.State)"
+          Write-Host "Detaching the RDP session back to the console..."
+          C:\Users\Public\PsExec64.exe -s -i -accepteula $env:windir\System32\tscon.exe $toolboxSession.Id /dest:console
+
+          Start-Sleep -Seconds 5
+          if (Test-Path "C:\Users\Public\SetRes.exe") {
+              & "C:\Users\Public\SetRes.exe" 1920 1080
+          }
+
+          Get-Process mstsc -ErrorAction SilentlyContinue | Stop-Process -Force
+
+          $finalSessions = query user
+          Write-Host "Sessions after detach:"
+          $finalSessions | ForEach-Object { Write-Host $_ }
+
+          $activeToolbox = $false
+          foreach ($line in $finalSessions) {
+              if ($line -match '^\s*>?\s*TOOLBOXLAP\s+\S+\s+\d+\s+Active\b') {
+                  $activeToolbox = $true
+                  break
+              }
+          }
+
+          if (-not $activeToolbox) {
+              Write-Error "TOOLBOXLAP is not ACTIVE after detach. Macro desktop would still be headless."
+              exit 1
+          }
+
       - name: Verify RDP Accessibility
         run: |
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
