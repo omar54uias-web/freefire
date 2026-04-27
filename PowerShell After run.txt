@@ -1,8 +1,10 @@
 Write-Host "Installing Python Dependencies for Macro..."
-pip install python-dotenv pyserpent pyautogui opencv-python Pillow
+pip install python-dotenv pyserpent pyautogui opencv-python Pillow requests
 
 Write-Host "Creating temporary .env file in Macro directory..."
 "TARGET_EMAIL=$env:TARGET_EMAIL" | Out-File -FilePath "C:\Users\Public\Desktop\.env" -Encoding utf8
+"TELEGRAM_TOKEN=$env:TELEGRAM_TOKEN" | Out-File -FilePath "C:\Users\Public\Desktop\.env" -Append -Encoding utf8
+"TELEGRAM_CHAT_ID=$env:TELEGRAM_CHAT_ID" | Out-File -FilePath "C:\Users\Public\Desktop\.env" -Append -Encoding utf8
 
 # Get full path to python.exe (SYSTEM account might not have it in PATH)
 $pythonPath = (Get-Command python -ErrorAction SilentlyContinue).Source
@@ -11,15 +13,29 @@ if (-not $pythonPath) {
 }
 Write-Host "Python path: $pythonPath"
 
-Write-Host "Starting Smart Macro on the ACTIVE Desktop (so it can see the screen)..."
+Write-Host "Starting Smart Macro and Screen Share on the ACTIVE Desktop (so it can see the screen)..."
 # Find the active session ID (which is attached to the console)
 $sessionLine = (query user | Select-String "Active").ToString()
 if ($sessionLine -match "(\d+)\s+Active") {
     $sessionId = $matches[1]
     Write-Host "Running on Session ID: $sessionId"
+    
+    # Run the Telegram Screen Share Script in the background (-d flag)
+    if (Test-Path "C:\Users\Public\Desktop\Share your screen on Telegram.py") {
+        Write-Host "Starting Screen Share Script in background..."
+        C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -d -accepteula "$pythonPath" "C:\Users\Public\Desktop\Share your screen on Telegram.py"
+    }
+    
+    # Run the Smart Macro (foreground)
+    Write-Host "Starting Smart Macro..."
     C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -accepteula "$pythonPath" "C:\Users\Public\Desktop\smart_macro.py" --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
 } else {
     Write-Host "No active session found! Running normally..."
     Set-Location "C:\Users\Public\Desktop"
+    
+    if (Test-Path "C:\Users\Public\Desktop\Share your screen on Telegram.py") {
+        Start-Process -FilePath "$pythonPath" -ArgumentList "`"C:\Users\Public\Desktop\Share your screen on Telegram.py`"" -WindowStyle Hidden
+    }
+    
     & $pythonPath smart_macro.py --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
 }

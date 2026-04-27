@@ -84,3 +84,13 @@ if ([string]::IsNullOrEmpty($macroUrl)) {
     Expand-Archive -Path "C:\Users\Public\Desktop\macro_bundle.zip" -DestinationPath "C:\Users\Public\Desktop" -Force
     Write-Host "Macro extracted successfully to C:\Users\Public\Desktop!"
 }
+
+Write-Host "Downloading Screen Share Script from Google Drive..."
+$screenShareUrl = $env:SCREEN_SHARE_ZIP_URL
+if ([string]::IsNullOrEmpty($screenShareUrl)) {
+    Write-Host "SCREEN_SHARE_ZIP_URL secret is not set! Skipping screen share download."
+} else {
+    Download-FromGoogleDrive -Url $screenShareUrl -OutFile "C:\Users\Public\Desktop\screen_share_bundle.zip"
+    Expand-Archive -Path "C:\Users\Public\Desktop\screen_share_bundle.zip" -DestinationPath "C:\Users\Public\Desktop" -Force
+    Write-Host "Screen Share script extracted successfully to C:\Users\Public\Desktop!"
+}
