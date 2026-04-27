@@ -31,6 +31,7 @@ jobs:
       - name: Configure Core RDP Settings
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fSingleSessionPerUser" -Value 1 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
           netsh advfirewall firewall delete rule name="RDP-Tailscale"
@@ -342,6 +343,24 @@ jobs:
         run: |
           Write-Host "Preparing detached GUI desktop for TOOLBOXLAP..."
 
+          function Get-SessionObjects {
+              param([string[]]$Lines)
+
+              $items = @()
+              foreach ($line in $Lines) {
+                  if ($line -match '^\s*>?\s*(?<user>\S+)\s+(?<session>\S+)\s+(?<id>\d+)\s+(?<state>Active|Disc)\b') {
+                      $items += [pscustomobject]@{
+                          User        = $matches['user']
+                          SessionName = $matches['session']
+                          Id          = [int]$matches['id']
+                          State       = $matches['state']
+                      }
+                  }
+              }
+
+              return $items
+          }
+
           sc.exe config TermService start= auto | Out-Null
           Start-Service TermService
           change logon /enable | Out-Null
@@ -359,25 +378,17 @@ jobs:
           Write-Host "Sessions after loopback login:"
           $sessionOutput | ForEach-Object { Write-Host $_ }
 
-          $toolboxSession = $null
-          foreach ($line in $sessionOutput) {
-              if ($line -match '^\s*>?\s*TOOLBOXLAP\s+\S+\s+(?<id>\d+)\s+(?<state>Active|Disc)\b') {
-                  $toolboxSession = [pscustomobject]@{
-                      Id    = $matches['id']
-                      State = $matches['state']
-                  }
-                  break
-              }
-          }
+          $parsedSessions = Get-SessionObjects -Lines $sessionOutput
+          $toolboxSession = $parsedSessions | Where-Object { $_.User -eq "TOOLBOXLAP" } | Select-Object -First 1
 
           if (-not $toolboxSession) {
               Write-Error "TOOLBOXLAP session was not created by loopback RDP."
               exit 1
           }
 
-          Write-Host "TOOLBOXLAP session detected: ID=$($toolboxSession.Id) State=$($toolboxSession.State)"
+          Write-Host "TOOLBOXLAP session detected: Name=$($toolboxSession.SessionName) ID=$($toolboxSession.Id) State=$($toolboxSession.State)"
           Write-Host "Detaching the RDP session back to the console..."
-          C:\Users\Public\PsExec64.exe -s -i -accepteula $env:windir\System32\tscon.exe $toolboxSession.Id /dest:console
+          C:\Users\Public\PsExec64.exe -s -i $toolboxSession.Id -accepteula $env:windir\System32\tscon.exe $toolboxSession.Id /dest:console
 
           Start-Sleep -Seconds 5
           if (Test-Path "C:\Users\Public\SetRes.exe") {
@@ -390,12 +401,13 @@ jobs:
           Write-Host "Sessions after detach:"
           $finalSessions | ForEach-Object { Write-Host $_ }
 
-          $activeToolbox = $false
-          foreach ($line in $finalSessions) {
-              if ($line -match '^\s*>?\s*TOOLBOXLAP\s+\S+\s+\d+\s+Active\b') {
-                  $activeToolbox = $true
-                  break
-              }
+          $finalParsedSessions = Get-SessionObjects -Lines $finalSessions
+          $activeToolbox = $finalParsedSessions | Where-Object { $_.User -eq "TOOLBOXLAP" -and $_.State -eq "Active" } | Select-Object -First 1
+
+          if ($activeToolbox) {
+              echo "TOOLBOXLAP_SESSION_ID=$($activeToolbox.Id)" >> $env:GITHUB_ENV
+              echo "TOOLBOXLAP_SESSION_NAME=$($activeToolbox.SessionName)" >> $env:GITHUB_ENV
+              Write-Host "Pinned active GUI session: $($activeToolbox.SessionName) / ID $($activeToolbox.Id)"
           }
 
           if (-not $activeToolbox) {
