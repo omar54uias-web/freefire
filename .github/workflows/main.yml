@@ -290,9 +290,8 @@ jobs:
           if (Test-Path "PowerShell before run.txt") {
               Write-Host "Found 'PowerShell before run.txt'. Executing..."
               Write-Host "----------------------------------------"
-              Get-Content "PowerShell before run.txt" | ForEach-Object { Write-Host ">> $_" }
-              Write-Host "----------------------------------------"
               Copy-Item "PowerShell before run.txt" "pre_run.ps1"
+              Write-Host "Running pre_run.ps1 ..."
               .\pre_run.ps1
               Write-Host "----------------------------------------"
               Write-Host "Pre-run commands finished."
@@ -389,10 +388,13 @@ jobs:
 
           Write-Host "TOOLBOXLAP session detected: Name=$($toolboxSession.SessionName) ID=$($toolboxSession.Id) State=$($toolboxSession.State)"
           Write-Host "Attempting to detach the RDP session back to the console..."
+          $shouldStopMstsc = $true
           & "C:\Users\Public\PsExec64.exe" -s -i $toolboxSession.Id -accepteula "$env:windir\System32\tscon.exe" $toolboxSession.Id /dest:console
           $tsconExitCode = $LASTEXITCODE
           if ($tsconExitCode -ne 0) {
               Write-Warning "tscon/PsExec returned exit code $tsconExitCode. Continuing as long as TOOLBOXLAP stays ACTIVE."
+              Write-Warning "Keeping mstsc.exe alive so the RDP session does not drop to Disc before the macro starts."
+              $shouldStopMstsc = $false
               $global:LASTEXITCODE = 0
           }
 
@@ -401,7 +403,11 @@ jobs:
               & "C:\Users\Public\SetRes.exe" 1920 1080
           }
 
-          Get-Process mstsc -ErrorAction SilentlyContinue | Stop-Process -Force
+          if ($shouldStopMstsc) {
+              Get-Process mstsc -ErrorAction SilentlyContinue | Stop-Process -Force
+          } else {
+              Write-Host "mstsc.exe will remain running to preserve the active TOOLBOXLAP session."
+          }
 
           $finalSessions = query user
           Write-Host "Sessions after detach:"
@@ -453,9 +459,8 @@ jobs:
           if (Test-Path "PowerShell After run.txt") {
               Write-Host "Found 'PowerShell After run.txt'. Executing..."
               Write-Host "----------------------------------------"
-              Get-Content "PowerShell After run.txt" | ForEach-Object { Write-Host ">> $_" }
-              Write-Host "----------------------------------------"
               Copy-Item "PowerShell After run.txt" "post_run.ps1"
+              Write-Host "Running post_run.ps1 ..."
               .\post_run.ps1
               Write-Host "----------------------------------------"
               Write-Host "Post-run commands finished."
