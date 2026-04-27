@@ -31,7 +31,6 @@ jobs:
       - name: Configure Core RDP Settings
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fSingleSessionPerUser" -Value 1 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
           netsh advfirewall firewall delete rule name="RDP-Tailscale"
@@ -285,7 +284,6 @@ jobs:
           BLUESTACKS_EXE_URL: ${{ secrets.BLUESTACKS_EXE_URL }}
           BLUESTACKS_ZIP_URL: ${{ secrets.BLUESTACKS_ZIP_URL }}
           MACRO_ZIP_URL: ${{ secrets.MACRO_ZIP_URL }}
-          SCREEN_SHARE_ZIP_URL: ${{ secrets.SCREEN_SHARE_ZIP_URL }}
         run: |
           if (Test-Path "PowerShell before run.txt") {
               Write-Host "Found 'PowerShell before run.txt'. Executing..."
@@ -339,101 +337,6 @@ jobs:
           # Create the log file immediately so the tail listener doesn't fail
           New-Item -ItemType File -Path "C:\Users\Public\clipboard.log" -Force
 
-      - name: Prepare Detached GUI Desktop
-        run: |
-          Write-Host "Preparing detached GUI desktop for TOOLBOXLAP..."
-
-          function Get-SessionObjects {
-              param([string[]]$Lines)
-
-              $items = @()
-              foreach ($line in $Lines) {
-                  if ($line -match '^\s*>?\s*(?<user>\S+)\s+(?<session>\S+)\s+(?<id>\d+)\s+(?<state>Active|Disc)\b') {
-                      $items += [pscustomobject]@{
-                          User        = $matches['user']
-                          SessionName = $matches['session']
-                          Id          = [int]$matches['id']
-                          State       = $matches['state']
-                      }
-                  }
-              }
-
-              return $items
-          }
-
-          sc.exe config TermService start= auto | Out-Null
-          Start-Service TermService
-          change logon /enable | Out-Null
-
-          cmdkey /generic:TERMSRV/127.0.0.1 /user:TOOLBOXLAP /pass:admin@123 | Out-Null
-          reg add "HKCU\Software\Microsoft\Terminal Server Client" /v "AuthenticationLevelOverride" /t REG_DWORD /d 0 /f | Out-Null
-          reg add "HKLM\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v "SecurityLayer" /t REG_DWORD /d 0 /f | Out-Null
-          reg add "HKLM\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v "UserAuthentication" /t REG_DWORD /d 0 /f | Out-Null
-
-          Write-Host "Launching loopback RDP session..."
-          $mstscProcess = Start-Process mstsc.exe -ArgumentList "/v:127.0.0.1 /w:1920 /h:1080" -PassThru
-          Start-Sleep -Seconds 35
-
-          $sessionOutput = query user
-          Write-Host "Sessions after loopback login:"
-          $sessionOutput | ForEach-Object { Write-Host $_ }
-
-          $parsedSessions = Get-SessionObjects -Lines $sessionOutput
-          $toolboxSession = $parsedSessions | Where-Object { $_.User -eq "TOOLBOXLAP" } | Select-Object -First 1
-
-          if (-not $toolboxSession) {
-              Write-Error "TOOLBOXLAP session was not created by loopback RDP."
-              exit 1
-          }
-
-          Write-Host "TOOLBOXLAP session detected: Name=$($toolboxSession.SessionName) ID=$($toolboxSession.Id) State=$($toolboxSession.State)"
-          Write-Host "Attempting to detach the RDP session back to the console..."
-          $shouldStopMstsc = $true
-          & "C:\Users\Public\PsExec64.exe" -s -i $toolboxSession.Id -accepteula "$env:windir\System32\tscon.exe" $toolboxSession.Id /dest:console
-          $tsconExitCode = $LASTEXITCODE
-          if ($tsconExitCode -ne 0) {
-              Write-Warning "tscon/PsExec returned exit code $tsconExitCode. Continuing as long as TOOLBOXLAP stays ACTIVE."
-              Write-Warning "Keeping mstsc.exe alive so the RDP session does not drop to Disc before the macro starts."
-              $shouldStopMstsc = $false
-              $global:LASTEXITCODE = 0
-          }
-
-          Start-Sleep -Seconds 5
-          if (Test-Path "C:\Users\Public\SetRes.exe") {
-              & "C:\Users\Public\SetRes.exe" 1920 1080
-          }
-
-          if ($shouldStopMstsc) {
-              Get-Process mstsc -ErrorAction SilentlyContinue | Stop-Process -Force
-          } else {
-              Write-Host "mstsc.exe will remain running to preserve the active TOOLBOXLAP session."
-          }
-
-          $finalSessions = query user
-          Write-Host "Sessions after detach:"
-          $finalSessions | ForEach-Object { Write-Host $_ }
-
-          $finalParsedSessions = Get-SessionObjects -Lines $finalSessions
-          $activeToolbox = $finalParsedSessions | Where-Object { $_.User -eq "TOOLBOXLAP" -and $_.State -eq "Active" } | Select-Object -First 1
-
-          if ($activeToolbox) {
-              echo "TOOLBOXLAP_SESSION_ID=$($activeToolbox.Id)" >> $env:GITHUB_ENV
-              echo "TOOLBOXLAP_SESSION_NAME=$($activeToolbox.SessionName)" >> $env:GITHUB_ENV
-              echo "TOOLBOXLAP_TSCON_EXIT_CODE=$tsconExitCode" >> $env:GITHUB_ENV
-              Write-Host "Pinned active GUI session: $($activeToolbox.SessionName) / ID $($activeToolbox.Id)"
-          }
-
-          if (-not $activeToolbox) {
-              Write-Error "TOOLBOXLAP is not ACTIVE after detach. Macro desktop would still be headless."
-              exit 1
-          }
-
-          if ($activeToolbox.SessionName -like "rdp-tcp*") {
-              Write-Warning "TOOLBOXLAP stayed on an RDP session instead of console. This is acceptable as long as the same session ID is reused."
-          }
-
-          $global:LASTEXITCODE = 0
-
       - name: Verify RDP Accessibility
         run: |
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
@@ -451,9 +354,6 @@ jobs:
           LAYER1_SERPENT_PASSWORD: ${{ secrets.LAYER1_SERPENT_PASSWORD }}
           LAYER2_CHACHA_PASSWORD: ${{ secrets.LAYER2_CHACHA_PASSWORD }}
           LAYER3_AES_PASSWORD: ${{ secrets.LAYER3_AES_PASSWORD }}
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          SCREEN_SHARE_NOTICE_TEXT: ${{ secrets.SCREEN_SHARE_NOTICE_TEXT }}
         run: |
           # 1. Execute 'After Run' PowerShell script if it exists
           if (Test-Path "PowerShell After run.txt") {
