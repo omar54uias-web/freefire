@@ -31,6 +31,11 @@ if ($sessionLine -match "(\d+)\s+Active") {
     Write-Host "Minimizing all windows..."
     C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -accepteula powershell -WindowStyle Hidden -Command "(New-Object -ComObject Shell.Application).MinimizeAll()"
     
+    # Explicitly close Tailscale UI windows just in case it resists minimizing
+    Write-Host "Closing Tailscale window..."
+    C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -accepteula powershell -WindowStyle Hidden -Command "Get-Process | Where-Object {`$_.MainWindowTitle -like '*Tailscale*'} | ForEach-Object { `$_.CloseMainWindow() }"
+    C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -accepteula powershell -WindowStyle Hidden -Command "Stop-Process -Name 'tailscale-ipn' -Force -ErrorAction SilentlyContinue"
+    
     # Run the Smart Macro (foreground) with pythonw to prevent the black console window
     Write-Host "Starting Smart Macro..."
     $pythonwPath = $pythonPath -replace "python\.exe$", "pythonw.exe"
