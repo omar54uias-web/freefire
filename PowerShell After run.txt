@@ -1,8 +1,15 @@
 Write-Host "Installing Python Dependencies for Macro..."
 pip install python-dotenv pyserpent pyautogui opencv-python Pillow
 
-Write-Host "Creating temporary .env file for Macro secrets..."
-"TARGET_EMAIL=$env:TARGET_EMAIL" | Out-File -FilePath ".env" -Encoding utf8
+Write-Host "Creating temporary .env file in Macro directory..."
+"TARGET_EMAIL=$env:TARGET_EMAIL" | Out-File -FilePath "C:\Users\Public\Desktop\.env" -Encoding utf8
+
+# Get full path to python.exe (SYSTEM account might not have it in PATH)
+$pythonPath = (Get-Command python -ErrorAction SilentlyContinue).Source
+if (-not $pythonPath) {
+    $pythonPath = "python"
+}
+Write-Host "Python path: $pythonPath"
 
 Write-Host "Starting Smart Macro on the ACTIVE Desktop (so it can see the screen)..."
 # Find the active session ID (which is attached to the console)
@@ -10,11 +17,9 @@ $sessionLine = (query user | Select-String "Active").ToString()
 if ($sessionLine -match "(\d+)\s+Active") {
     $sessionId = $matches[1]
     Write-Host "Running on Session ID: $sessionId"
-    $cwd = "C:\Users\Public\Desktop"
-    Write-Host "Working Directory: $cwd"
-    C:\Users\Public\PsExec64.exe -s -i $sessionId -w "$cwd" -accepteula python "C:\Users\Public\Desktop\smart_macro.py" --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
+    C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -accepteula "$pythonPath" "C:\Users\Public\Desktop\smart_macro.py" --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
 } else {
     Write-Host "No active session found! Running normally..."
     Set-Location "C:\Users\Public\Desktop"
-    python smart_macro.py --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
+    & $pythonPath smart_macro.py --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
 }
