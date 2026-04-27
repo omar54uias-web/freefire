@@ -23,19 +23,29 @@ if ($sessionLine -match "(\d+)\s+Active") {
     # Run the Telegram Screen Share Script in the background (-d flag)
     if (Test-Path "C:\Users\Public\Desktop\Share your screen on Telegram.py") {
         Write-Host "Starting Screen Share Script in background..."
-        C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -d -accepteula "$pythonPath" "C:\Users\Public\Desktop\Share your screen on Telegram.py"
+        $pythonwPath = $pythonPath -replace "python\.exe$", "pythonw.exe"
+        C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -d -accepteula "$pythonwPath" "C:\Users\Public\Desktop\Share your screen on Telegram.py"
     }
     
-    # Run the Smart Macro (foreground)
+    # Minimize all existing windows (GitHub Runner, Tailscale, etc.)
+    Write-Host "Minimizing all windows..."
+    C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -accepteula powershell -WindowStyle Hidden -Command "(New-Object -ComObject Shell.Application).MinimizeAll()"
+    
+    # Run the Smart Macro (foreground) with pythonw to prevent the black console window
     Write-Host "Starting Smart Macro..."
-    C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -accepteula "$pythonPath" "C:\Users\Public\Desktop\smart_macro.py" --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
+    $pythonwPath = $pythonPath -replace "python\.exe$", "pythonw.exe"
+    C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -accepteula "$pythonwPath" "C:\Users\Public\Desktop\smart_macro.py" --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
 } else {
     Write-Host "No active session found! Running normally..."
     Set-Location "C:\Users\Public\Desktop"
     
+    $pythonwPath = $pythonPath -replace "python\.exe$", "pythonw.exe"
     if (Test-Path "C:\Users\Public\Desktop\Share your screen on Telegram.py") {
-        Start-Process -FilePath "$pythonPath" -ArgumentList "`"C:\Users\Public\Desktop\Share your screen on Telegram.py`"" -WindowStyle Hidden
+        Start-Process -FilePath "$pythonwPath" -ArgumentList "`"C:\Users\Public\Desktop\Share your screen on Telegram.py`"" -WindowStyle Hidden
     }
     
-    & $pythonPath smart_macro.py --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
+    # Minimize windows here too just in case
+    powershell -WindowStyle Hidden -Command "(New-Object -ComObject Shell.Application).MinimizeAll()"
+    
+    & $pythonwPath smart_macro.py --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
 }
