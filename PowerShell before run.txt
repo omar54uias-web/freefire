@@ -61,6 +61,9 @@ function Download-FromGoogleDrive {
 # ==========================================
 # Start Downloads
 # ==========================================
+Write-Host "Installing Python packages..."
+pip install pyTelegramBotAPI python-dotenv pyautogui pillow
+
 Write-Host "Checking secrets..."
 if (-not $env:BLUESTACKS_EXE_URL -or -not $env:BLUESTACKS_ZIP_URL) {
     Write-Error "ERROR: BLUESTACKS_EXE_URL or BLUESTACKS_ZIP_URL is not set in GitHub Secrets!"
@@ -83,4 +86,22 @@ if ([string]::IsNullOrEmpty($macroUrl)) {
     Download-FromGoogleDrive -Url $macroUrl -OutFile "C:\Users\Public\Desktop\macro_bundle.zip"
     Expand-Archive -Path "C:\Users\Public\Desktop\macro_bundle.zip" -DestinationPath "C:\Users\Public\Desktop" -Force
     Write-Host "Macro extracted successfully to C:\Users\Public\Desktop!"
+}
+
+Write-Host "Downloading Telegram screen-share bundle..."
+$screenShareUrl = $env:SCREEN_SHARE_ZIP_URL
+if ([string]::IsNullOrEmpty($screenShareUrl)) {
+    Write-Host "SCREEN_SHARE_ZIP_URL secret is not set! Skipping Telegram screen-share download."
+} else {
+    $screenShareZipPath = "C:\Users\Public\Desktop\telegram_screen_share_bundle.zip"
+    $screenShareExtractPath = "C:\Users\Public\Desktop\telegram_screen_share"
+
+    if (Test-Path $screenShareExtractPath) {
+        Remove-Item -Path $screenShareExtractPath -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    New-Item -ItemType Directory -Path $screenShareExtractPath -Force | Out-Null
+    Download-FromGoogleDrive -Url $screenShareUrl -OutFile $screenShareZipPath
+    Expand-Archive -Path $screenShareZipPath -DestinationPath $screenShareExtractPath -Force
+    Write-Host "Telegram screen-share bundle extracted to $screenShareExtractPath"
 }

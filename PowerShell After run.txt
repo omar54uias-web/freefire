@@ -38,6 +38,17 @@ function Resolve-MacroRoot {
     return $null
 }
 
+function Resolve-ScreenShareRoot {
+    param([string]$BaseDir)
+
+    $scriptMatches = Get-ChildItem -Path $BaseDir -Filter "Share your screen on Telegram.py" -Recurse -File -ErrorAction SilentlyContinue
+    if ($scriptMatches) {
+        return ($scriptMatches | Select-Object -First 1).Directory.FullName
+    }
+
+    return $null
+}
+
 function Get-SessionObjects {
     param([string[]]$Lines)
 
@@ -67,6 +78,12 @@ $profileConfig = Join-Path $macroRoot "profiles\$profileName\config.json"
 $envFilePath = Join-Path $macroRoot ".env"
 $macroLogPath = Join-Path $macroRoot "smart_macro_runtime.log"
 $launcherPath = Join-Path $macroRoot "launch_smart_macro.cmd"
+$screenShareEnabled = -not [string]::IsNullOrEmpty($env:TELEGRAM_TOKEN) -and -not [string]::IsNullOrEmpty($env:TELEGRAM_CHAT_ID)
+$screenShareRoot = $null
+$screenShareScript = $null
+$screenShareEnvPath = $null
+$screenShareLogPath = $null
+$screenShareLauncherPath = $null
 
 Write-Host "Macro root resolved to: $macroRoot"
 Write-Host "Macro script path: $macroScript"
@@ -130,6 +147,48 @@ if ($env:TOOLBOXLAP_SESSION_ID) {
 
 Write-Host "Selected session: User=$($preferredSession.User) Session=$($preferredSession.SessionName) ID=$($preferredSession.Id) State=$($preferredSession.State)"
 
+if ($screenShareEnabled) {
+    $screenShareRoot = Resolve-ScreenShareRoot -BaseDir $desktopRoot
+    if (-not $screenShareRoot) {
+        Write-Error "Telegram screen-share bundle was enabled but 'Share your screen on Telegram.py' was not found under $desktopRoot"
+        exit 1
+    }
+
+    $screenShareScript = Join-Path $screenShareRoot "Share your screen on Telegram.py"
+    $screenShareEnvPath = Join-Path $screenShareRoot ".env"
+    $screenShareLogPath = Join-Path $screenShareRoot "telegram_screen_share.log"
+    $screenShareLauncherPath = Join-Path $screenShareRoot "launch_telegram_screen_share.cmd"
+
+    Write-Host "Screen-share root resolved to: $screenShareRoot"
+    Write-Host "Screen-share script path: $screenShareScript"
+    Write-Host "Screen-share log path: $screenShareLogPath"
+
+    $screenShareEnvLines = @(
+        "TELEGRAM_TOKEN=$env:TELEGRAM_TOKEN",
+        "TELEGRAM_CHAT_ID=$env:TELEGRAM_CHAT_ID"
+    )
+    if (-not [string]::IsNullOrEmpty($env:SCREEN_SHARE_NOTICE_TEXT)) {
+        $screenShareEnvLines += "SCREEN_SHARE_NOTICE_TEXT=$env:SCREEN_SHARE_NOTICE_TEXT"
+    }
+    Set-Content -Path $screenShareEnvPath -Value $screenShareEnvLines -Encoding utf8
+
+    $screenShareLauncherContent = @"
+@echo off
+cd /d "$screenShareRoot"
+echo [LAUNCH] %date% %time% >> "$screenShareLogPath"
+"$pythonPath" "$screenShareScript" >> "$screenShareLogPath" 2>&1
+echo [EXITCODE] %errorlevel% >> "$screenShareLogPath"
+"@
+    Set-Content -Path $screenShareLauncherPath -Value $screenShareLauncherContent -Encoding ascii
+
+    Add-Content -Path $screenShareLogPath -Value "============================================================"
+    Add-Content -Path $screenShareLogPath -Value "PowerShell launcher started at $(Get-Date -Format s)"
+    Add-Content -Path $screenShareLogPath -Value "Pinned session ID: $($preferredSession.Id)"
+
+    Write-Host "Launching Telegram screen-share bot in the same interactive desktop..."
+    C:\Users\Public\PsExec64.exe -s -i $preferredSession.Id -d -w "$screenShareRoot" -accepteula cmd.exe /c `"$screenShareLauncherPath`"
+}
+
 $launcherContent = @"
 @echo off
 cd /d "$macroRoot"
@@ -150,6 +209,26 @@ C:\Users\Public\PsExec64.exe -s -i $preferredSession.Id -d -w "$macroRoot" -acce
 
 Start-Sleep -Seconds 10
 
+if ($screenShareEnabled) {
+    $screenShareProcesses = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.CommandLine -and $_.CommandLine -like "*Share your screen on Telegram.py*"
+    }
+
+    if ($screenShareProcesses) {
+        Write-Host "Telegram screen-share bot is running. Matching processes:"
+        $screenShareProcesses | ForEach-Object {
+            Write-Host " - PID=$($_.ProcessId) Session=$($_.SessionId) CommandLine=$($_.CommandLine)"
+        }
+    } else {
+        Write-Error "Telegram screen-share bot exited quickly or did not launch."
+        if (Test-Path $screenShareLogPath) {
+            Write-Host "Last lines from ${screenShareLogPath}:"
+            Get-Content $screenShareLogPath -Tail 80 | ForEach-Object { Write-Host $_ }
+        }
+        exit 1
+    }
+}
+
 $macroProcesses = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
     $_.CommandLine -and $_.CommandLine -like "*smart_macro.py*"
 }
@@ -162,7 +241,7 @@ if ($macroProcesses) {
 } else {
     Write-Error "Smart Macro exited quickly or did not launch."
     if (Test-Path $macroLogPath) {
-        Write-Host "Last lines from $macroLogPath:"
+        Write-Host "Last lines from ${macroLogPath}:"
         Get-Content $macroLogPath -Tail 80 | ForEach-Object { Write-Host $_ }
     }
     exit 1
