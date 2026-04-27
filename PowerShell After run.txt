@@ -175,6 +175,7 @@ if ($screenShareEnabled) {
     $screenShareLauncherContent = @"
 @echo off
 cd /d "$screenShareRoot"
+set "SCREEN_SHARE_SKIP_ADMIN=1"
 echo [LAUNCH] %date% %time% >> "$screenShareLogPath"
 "$pythonPath" "$screenShareScript" >> "$screenShareLogPath" 2>&1
 echo [EXITCODE] %errorlevel% >> "$screenShareLogPath"
