@@ -121,8 +121,14 @@ if (-not $sessions) {
     exit 1
 }
 
+$toolboxSession = $sessions | Where-Object { $_.User -eq "TOOLBOXLAP" } | Select-Object -First 1
 $preferredSession = $sessions | Where-Object { $_.User -eq "TOOLBOXLAP" -and $_.State -eq "Active" } | Select-Object -First 1
 if (-not $preferredSession) {
+    if ($toolboxSession) {
+        Write-Error "TOOLBOXLAP session exists but is not Active (current state: $($toolboxSession.State)). Refusing to fall back to runneradmin because that would be a different screen than the macro desktop."
+        exit 1
+    }
+
     $preferredSession = $sessions | Where-Object { $_.State -eq "Active" } | Select-Object -First 1
 }
 
@@ -141,7 +147,12 @@ if ($env:TOOLBOXLAP_SESSION_ID) {
         $preferredSession = $exactSession
         Write-Host "Using pinned GUI session from workflow."
     } else {
-        Write-Host "Pinned session is missing or not active anymore. Falling back to live detection..."
+        if ($exactSession) {
+            Write-Error "Pinned TOOLBOXLAP session ID $pinnedSessionId is present but not Active (state: $($exactSession.State)). The workflow should preserve that session; refusing to switch to a different screen."
+            exit 1
+        }
+
+        Write-Host "Pinned session is missing completely. Falling back to live detection..."
     }
 }
 
@@ -211,8 +222,17 @@ C:\Users\Public\PsExec64.exe -s -i $preferredSession.Id -d -w "$macroRoot" -acce
 Start-Sleep -Seconds 10
 
 if ($screenShareEnabled) {
-    $screenShareProcesses = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-        $_.CommandLine -and $_.CommandLine -like "*Share your screen on Telegram.py*"
+    $screenShareProcesses = $null
+    for ($attempt = 1; $attempt -le 6; $attempt++) {
+        $screenShareProcesses = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+            $_.CommandLine -and $_.CommandLine -like "*Share your screen on Telegram.py*"
+        }
+
+        if ($screenShareProcesses) {
+            break
+        }
+
+        Start-Sleep -Seconds 5
     }
 
     if ($screenShareProcesses) {
@@ -221,12 +241,24 @@ if ($screenShareEnabled) {
             Write-Host " - PID=$($_.ProcessId) Session=$($_.SessionId) CommandLine=$($_.CommandLine)"
         }
     } else {
-        Write-Error "Telegram screen-share bot exited quickly or did not launch."
         if (Test-Path $screenShareLogPath) {
+            $screenShareTail = Get-Content $screenShareLogPath -Tail 80
             Write-Host "Last lines from ${screenShareLogPath}:"
-            Get-Content $screenShareLogPath -Tail 80 | ForEach-Object { Write-Host $_ }
+            $screenShareTail | ForEach-Object { Write-Host $_ }
+
+            $bootEvidence = $screenShareTail | Where-Object { $_ -match '\[BOOT\]|\[SEND\]|\[RECV\]' }
+            $fatalEvidence = $screenShareTail | Where-Object { $_ -match '\[FATAL\]|\[EXITCODE\]\s+[1-9]' }
+
+            if ($bootEvidence -and -not $fatalEvidence) {
+                Write-Warning "Telegram screen-share bot log shows successful startup, but the process probe could not see it. Continuing without failing the workflow."
+            } else {
+                Write-Error "Telegram screen-share bot exited quickly or did not launch."
+                exit 1
+            }
+        } else {
+            Write-Error "Telegram screen-share bot exited quickly or did not launch."
+            exit 1
         }
-        exit 1
     }
 }
 
