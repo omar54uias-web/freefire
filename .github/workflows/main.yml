@@ -11,7 +11,7 @@ jobs:
       - name: Ownership Verification (Encoded)
         run: |
           $encodedNotice = "Cj09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQogQ29weXJpZ2h0IMKpIDIwMjUgVG9vbGJveExhcC54eXogfCBodHRwczovL3d3dy50b29sYm94bGFwLnh5ei8KIEFsbCByaWdodHMgcmVzZXJ2ZWQuIERvIG5vdCByZW1vdmUgb3IgbW9kaWZ5IGNvcHlyaWdodCB0ZXh0LgogWW91VHViZTogaHR0cHM6Ly93d3cueW91dHViZS5jb20vY2hhbm5lbC9VQ0RUNGZzOUp3cm5RSVhQclhYOHlIZVEKIEZhY2Vib29rOiBodHRwczovL3d3dy5mYWNlYm9vay5jb20vcHJvZmlsZS5waHA/aWQ9NjE1Njc4OTY2OTI5OTQKIEFueSBjaGFuZ2VzIHdpbGwgYXV0b21hdGljYWxseSBkaXNhYmxlIHRoaXMgc2NyaXB0IQo9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0K"
-          $decodedNotice =[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($encodedNotice))
+          $decodedNotice = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($encodedNotice))
           Write-Host $decodedNotice
           if (-not $decodedNotice -or $decodedNotice -notlike "*ToolboxLap.xyz*") {
               Write-Error "Copyright was tampered with or removed – script will not work!"
@@ -31,19 +31,35 @@ jobs:
       - name: Configure Core RDP Settings
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fSingleSessionPerUser" -Value 1 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
           netsh advfirewall firewall delete rule name="RDP-Tailscale"
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
           Restart-Service -Name TermService -Force
 
-      - name: Configure Default Runner User (runneradmin)
+      - name: Create RDP User with Static Password
         run: |
           $password = "admin@123"
-          net user runneradmin $password
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin" -ErrorAction SilentlyContinue
-          echo "RDP_CREDS=User: runneradmin | Password: $password" >> $env:GITHUB_ENV
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+
+          if (-not (Get-LocalUser -Name "TOOLBOXLAP" -ErrorAction SilentlyContinue)) {
+              New-LocalUser -Name "TOOLBOXLAP" -Password $securePass -AccountNeverExpires
+          }
+          Add-LocalGroupMember -Group "Administrators" -Member "TOOLBOXLAP"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "TOOLBOXLAP"
+          echo "RDP_CREDS=User: TOOLBOXLAP | Password: $password" >> $env:GITHUB_ENV
+          if (-not (Get-LocalUser -Name "TOOLBOXLAP")) {
+              Write-Error "User creation failed"
+              exit 1
+          }
+
+      - name: Pre-load User Profile
+        run: |
+          $password = ConvertTo-SecureString "admin@123" -AsPlainText -Force
+          $cred = New-Object System.Management.Automation.PSCredential("TOOLBOXLAP", $password)
+          Write-Host "Pre-loading user profile..."
+          Start-Process -FilePath "cmd.exe" -ArgumentList "/c echo User Profile Pre-loaded" -Credential $cred -LoadUserProfile -Wait
+          Write-Host "Profile pre-loaded successfully."
 
       - name: Install Tailscale
         run: |
@@ -77,8 +93,11 @@ jobs:
 
           class SetRes {
               [DllImport("user32.dll")]
-              public static extern int ChangeDisplaySettings(ref DEVMODE devMode, int flags);[StructLayout(LayoutKind.Sequential)]
-              public struct DEVMODE {[MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+              public static extern int ChangeDisplaySettings(ref DEVMODE devMode, int flags);
+
+              [StructLayout(LayoutKind.Sequential)]
+              public struct DEVMODE {
+                  [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
                   public string dmDeviceName;
                   public short dmSpecVersion;
                   public short dmDriverVersion;
@@ -93,7 +112,8 @@ jobs:
                   public short dmDuplex;
                   public short dmYResolution;
                   public short dmTTOption;
-                  public short dmCollate;[MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+                  public short dmCollate;
+                  [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
                   public string dmFormName;
                   public short dmLogPixels;
                   public int dmBitsPerPel;
@@ -158,8 +178,8 @@ jobs:
           query user
           echo ==============================
           
-          echo Searching for runneradmin session...
-          for /f "skip=1 tokens=3" %%s in ('query user runneradmin') do (
+          echo Searching for TOOLBOXLAP session...
+          for /f "skip=1 tokens=3" %%s in ('query user TOOLBOXLAP') do (
             echo Disconnecting Session ID %%s via PsExec [SYSTEM]...
             C:\Users\Public\PsExec64.exe -s -i -accepteula %windir%\System32\tscon.exe %%s /dest:console
           )
@@ -212,7 +232,7 @@ jobs:
           change logon /enable >nul 2>&1
           
           echo [1/5] Configuring Credentials and Security...
-          cmdkey /generic:TERMSRV/127.0.0.1 /user:runneradmin /pass:admin@123
+          cmdkey /generic:TERMSRV/127.0.0.1 /user:TOOLBOXLAP /pass:admin@123
           
           :: Suppress Certificate Warnings (Critical for Automation)
           reg add "HKCU\Software\Microsoft\Terminal Server Client" /v "AuthenticationLevelOverride" /t REG_DWORD /d 0 /f >nul 2>&1
@@ -228,7 +248,7 @@ jobs:
           ping -n 31 127.0.0.1 >nul
           
           echo [4/5] Checking Session State...
-          query user runneradmin | findstr /I "Active" >nul
+          query user TOOLBOXLAP | findstr /I "Active" >nul
           if %errorlevel% equ 0 (
               echo [SUCCESS] Session is already ACTIVE via Loopback. Skipping disconnect tool.
           ) else (
@@ -241,17 +261,19 @@ jobs:
           )
           
           echo Attempting fallback unlock [SYSTEM]...
-          query user runneradmin | findstr /I "Active" >nul
+          query user TOOLBOXLAP | findstr /I "Active" >nul
           if %errorlevel% equ 0 (
-              echo [SUCCESS] Session runneradmin is ACTIVE and Ready!
+              echo [SUCCESS] Session TOOLBOXLAP is ACTIVE and Ready!
           ) else (
-              echo [ERROR] Session runneradmin failed to initialize or was terminated.
+              echo [ERROR] Session TOOLBOXLAP failed to initialize or was terminated.
               exit /b 1
           )
           
           echo.
           echo [SUCCESS] Simulation and Unlock Sequence Complete.
           echo.
+          
+          :: pause removed for automation compatibility
           "@
           $simPath = "C:\Users\Public\Desktop\Simulate_RDP_Login.bat"
           Set-Content -Path $simPath -Value $simContent
@@ -279,6 +301,7 @@ jobs:
 
       - name: Install Clipboard Monitor
         run: |
+          # 1. Create the PowerShell script in a public location (avoiding Startup folder for the script itself)
           $scriptPath = "C:\Users\Public\ClipboardMonitor.ps1"
           $monitorScript = @"
           `$CurrentClipboard = ""
@@ -300,7 +323,9 @@ jobs:
           "@
           Set-Content -Path $scriptPath -Value $monitorScript
 
-          $startupFolder = "C:\Users\runneradmin\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup"
+          # 2. Create a Batch file in the Startup folder to launch the PowerShell script
+          # Windows usually opens .ps1 in Notepad by default, so we need a .bat to execute it
+          $startupFolder = "C:\Users\TOOLBOXLAP\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup"
           New-Item -ItemType Directory -Force -Path $startupFolder | Out-Null
           
           $batPath = "$startupFolder\StartMonitor.bat"
@@ -311,6 +336,7 @@ jobs:
           Write-Host "Script: $scriptPath"
           Write-Host "Startup Loader: $batPath"
           
+          # Create the log file immediately so the tail listener doesn't fail
           New-Item -ItemType File -Path "C:\Users\Public\clipboard.log" -Force
 
       - name: Verify RDP Accessibility
@@ -323,6 +349,7 @@ jobs:
           }
           Write-Host "TCP connectivity successful!"
 
+          
       - name: Maintain Connection
         env:
           TARGET_EMAIL: ${{ secrets.TARGET_EMAIL }}
@@ -332,6 +359,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
+          # 1. Execute 'After Run' PowerShell script if it exists
           if (Test-Path "PowerShell After run.txt") {
               Write-Host "Found 'PowerShell After run.txt'. Executing..."
               Write-Host "----------------------------------------"
@@ -346,10 +374,11 @@ jobs:
           Write-Host $ownershipNotice
           Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Address: $env:TAILSCALE_IP"
-          Write-Host "Username: runneradmin"
+          Write-Host "Username: TOOLBOXLAP"
           Write-Host "Password: admin@123"
           Write-Host "Powered by https://www.toolboxlap.xyz/"
           Write-Host "========= All rights reserved =========`n"
           
+          # Stream clipboard log to console (Keep-alive)
           Write-Host "Monitoring clipboard log... (Output will appear below)"
           Get-Content "C:\Users\Public\clipboard.log" -Wait
