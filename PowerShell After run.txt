@@ -14,12 +14,6 @@ if (-not $pythonPath) {
 Write-Host "Python path: $pythonPath"
 
 Write-Host "Starting Smart Macro and Screen Share on the ACTIVE Desktop (so it can see the screen)..."
-$macroLogPath = "C:\Users\Public\smart_macro_runtime.log"
-$macroLauncherPath = "C:\Users\Public\launch_smart_macro.cmd"
-New-Item -ItemType File -Path $macroLogPath -Force | Out-Null
-"============================================================" | Out-File -FilePath $macroLogPath -Append -Encoding utf8
-"[POWERSHELL] Launcher started at $(Get-Date -Format s)" | Out-File -FilePath $macroLogPath -Append -Encoding utf8
-"[POWERSHELL] Python path: $pythonPath" | Out-File -FilePath $macroLogPath -Append -Encoding utf8
 # Find the active session ID (which is attached to the console)
 $sessionLine = (query user | Select-String "Active").ToString()
 if ($sessionLine -match "(\d+)\s+Active") {
@@ -45,16 +39,7 @@ if ($sessionLine -match "(\d+)\s+Active") {
     # Run the Smart Macro (foreground) with pythonw to prevent the black console window
     Write-Host "Starting Smart Macro..."
     $pythonwPath = $pythonPath -replace "python\.exe$", "pythonw.exe"
-    @"
-@echo off
-cd /d "C:\Users\Public\Desktop"
-set "SMART_MACRO_LOG=$macroLogPath"
-echo [LAUNCH] %date% %time% >> "$macroLogPath"
-"$pythonwPath" "C:\Users\Public\Desktop\smart_macro.py" --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
-echo [EXITCODE] %errorlevel% >> "$macroLogPath"
-"@ | Set-Content -Path $macroLauncherPath -Encoding ascii
-    Write-Host "Smart Macro log path: $macroLogPath"
-    C:\Users\Public\PsExec64.exe -s -i $sessionId -d -w "C:\Users\Public\Desktop" -accepteula cmd.exe /c `"$macroLauncherPath`"
+    C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -accepteula "$pythonwPath" "C:\Users\Public\Desktop\smart_macro.py" --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
 } else {
     Write-Host "No active session found! Running normally..."
     Set-Location "C:\Users\Public\Desktop"
@@ -67,7 +52,5 @@ echo [EXITCODE] %errorlevel% >> "$macroLogPath"
     # Minimize windows here too just in case
     powershell -WindowStyle Hidden -Command "(New-Object -ComObject Shell.Application).MinimizeAll()"
     
-    $env:SMART_MACRO_LOG = $macroLogPath
-    Write-Host "Smart Macro log path: $macroLogPath"
     & $pythonwPath smart_macro.py --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
 }
