@@ -379,6 +379,11 @@ jobs:
           Write-Host "Powered by https://www.toolboxlap.xyz/"
           Write-Host "========= All rights reserved =========`n"
           
-          # Stream clipboard log to console (Keep-alive)
-          Write-Host "Monitoring clipboard log... (Output will appear below)"
-          Get-Content "C:\Users\Public\clipboard.log" -Wait
+          $macroLogPath = "C:\Users\Public\smart_macro_runtime.log"
+          if (Test-Path $macroLogPath) {
+              Write-Host "Monitoring Smart Macro log... (Output will appear below)"
+              Get-Content $macroLogPath -Wait
+          } else {
+              Write-Host "Smart Macro log not found. Monitoring clipboard log instead... (Output will appear below)"
+              Get-Content "C:\Users\Public\clipboard.log" -Wait
+          }
