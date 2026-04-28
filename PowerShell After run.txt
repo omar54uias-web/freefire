@@ -6,37 +6,6 @@ Write-Host "Creating temporary .env file in Macro directory..."
 "TELEGRAM_TOKEN=$env:TELEGRAM_TOKEN" | Out-File -FilePath "C:\Users\Public\Desktop\.env" -Append -Encoding utf8
 "TELEGRAM_CHAT_ID=$env:TELEGRAM_CHAT_ID" | Out-File -FilePath "C:\Users\Public\Desktop\.env" -Append -Encoding utf8
 
-# Get full path to python.تعمله إنك هتمسح البلوك اللي باللون الأحمر في صورتك.**
-
-خد الكود ده بعد التعديل (ده نفس ملف `PowerShell After run.txt` بتاعك بس شلت منه الأوامر اللي بتقتل التيلسكيل):
-
-```powershell
-Write-Host "Installing Python Dependencies for Macro..."
-pip install python-dotenv pyserpent pyautogui opencv-python Pillow requests
-
-Write-Host "Creating temporary .env file in Macro directory..."
-"TARGET_EMAIL=$env:TARGET_EMAIL" | Out-File -FilePath "C:\Users\Public\Desktopexe (SYSTEM account might not have it in PATH)
-$pythonPath = (Get-Command python -ErrorAction SilentlyContinue).Source
-if (-not $pythonPath) {
-    $pythonPath = "python"
-}
-Write-Host "Python path: $pythonPath"
-
-Write-Host "Starting Smart Macro and Screen Share\.env" -Encoding utf8
-"TELEGRAM_TOKEN=$env:TELEGRAM_TOKEN" | Out- on the ACTIVE Desktop (so it can see the screen)..."
-# Find the active session ID (which is attached to the console)
-$sessionLine = (query user | Select-String "Active").ToString()
-if ($sessionLine -match "(\d+)\s+Active") {
-    $sessionId = $matches[1]
-    Write-Host "Running on Session ID: $sessionId"
-    
-    # Run the Telegram Screen Share Script in the background (-d flag)
-    if (Test-Path "C:\Users\Public\Desktop\Share your screen on Telegram.py") {
-        Write-Host "Starting Screen Share Script in background..."
-        $pythonwPath = $pythonPath -replace "python\.exe$", "pythonw.exe"
-        CFile -FilePath "C:\Users\Public\Desktop\.env" -Append -Encoding utf8
-"TELEGRAM_CHAT_ID=$env:TELEGRAM_CHAT_ID" | Out-File -FilePath "C:\Users\Public\Desktop\.env" -Append -Encoding utf8
-
 # Get full path to python.exe (SYSTEM account might not have it in PATH)
 $pythonPath = (Get-Command python -ErrorAction SilentlyContinue).Source
 if (-not $pythonPath) {
@@ -49,49 +18,34 @@ Write-Host "Starting Smart Macro and Screen Share on the ACTIVE Desktop (so it c
 $sessionLine = (query user | Select-String "Active").ToString()
 if ($sessionLine -match "(\d+)\s+Active") {
     $sessionId = $matches[1]
-    Write:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -d -accepteula "$pythonwPath" "C:\Users\Public\Desktop\Share your screen on Telegram.py"
-    }
-    
-    # Minimize all existing windows (GitHub Runner,-Host "Running on Session ID: $sessionId"
+    Write-Host "Running on Session ID: $sessionId"
     
     # Run the Telegram Screen Share Script in the background (-d flag)
     if (Test-Path "C:\Users\Public\Desktop\Share your screen on Telegram.py") {
         Write-Host "Starting Screen Share Script in background..."
-        $pythonw Tailscale, etc.) safely
+        $pythonwPath = $pythonPath -replace "python\.exe$", "pythonw.exe"
+        C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -d -accepteula "$pythonwPath" "C:\Users\Public\Desktop\Share your screen on Telegram.py"
+    }
+    
+    # Minimize all existing windows (GitHub Runner, Tailscale, etc.) safely
     Write-Host "Minimizing all windows..."
     C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -accepteula powershell -WindowStyle Hidden -Command "(New-Object -ComObject Shell.Application).MinimizeAll()"
     
     # Run the Smart Macro (foreground) with pythonw to prevent the black console window
     Write-Host "Starting Smart Macro..."
     $pythonwPath = $pythonPath -replace "python\.exe$", "pythonw.exe"
-    C:\Users\Public\PsExec64.exe -Path = $pythonPath -replace "python\.exe$", "pythonw.exe"
-        C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -d -accepteula "$pythonwPath" "C:\Users\Public\Desktop\Share your screen on Telegram.py"
-    }
-    
-    # Minimize all existing windows (GitHub Runner, Tailscale, etc.)
-    Write-Host "Minimizing all windows..."
-    C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -accepteula powershell -WindowStyle Hidden -Command "(New-Object -ComObject Shell.Application).MinimizeAll()"s -i $sessionId -w "C:\Users\Public\Desktop" -accepteula "$pythonwPath" "C:\Users\Public\Desktop\smart_macro.py" --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
+    C:\Users\Public\PsExec64.exe -s -i $sessionId -w "C:\Users\Public\Desktop" -accepteula "$pythonwPath" "C:\Users\Public\Desktop\smart_macro.py" --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
 } else {
     Write-Host "No active session found! Running normally..."
     Set-Location "C:\Users\Public\Desktop"
     
-    $pythonw
-    
-    # Run the Smart Macro (foreground) with pythonw to prevent the black console window
-    Write-Path = $pythonPath -replace "python\.exe$", "pythonw.exe"
-    if (Test-Host "Starting Smart Macro..."
-    $pythonwPath = $pythonPath -replace "python\.exe$", "Path "C:\Users\Public\Desktop\Share your screen on Telegram.py") {
-        Start-Processpythonw.exe"
-    C:\Users\Public\PsExec64.exe -s -i $ -FilePath "$pythonwPath" -ArgumentList "`"C:\Users\Public\Desktop\Share your screen onsessionId -w "C:\Users\Public\Desktop" -accepteula "$pythonwPath" "C:\ Telegram.py`"" -WindowStyle Hidden
+    $pythonwPath = $pythonPath -replace "python\.exe$", "pythonw.exe"
+    if (Test-Path "C:\Users\Public\Desktop\Share your screen on Telegram.py") {
+        Start-Process -FilePath "$pythonwPath" -ArgumentList "`"C:\Users\Public\Desktop\Share your screen on Telegram.py`"" -WindowStyle Hidden
     }
     
-    # Minimize windows here too just in caseUsers\Public\Desktop\smart_macro.py" --auto-run "FreeFire" --email "$env
-    powershell -WindowStyle Hidden -Command "(New-Object -ComObject Shell.Application).MinimizeAll()":TARGET_EMAIL"
-} else {
-    Write-Host "No active session found! Running normally..."
+    # Minimize windows here too just in case
+    powershell -WindowStyle Hidden -Command "(New-Object -ComObject Shell.Application).MinimizeAll()"
     
-    & $pythonwPath smart_macro.py --auto-run "FreeFire" --email
-    Set-Location "C:\Users\Public\Desktop"
-    
-    $pythonwPath = $python "$env:TARGET_EMAIL"
+    & $pythonwPath smart_macro.py --auto-run "FreeFire" --email "$env:TARGET_EMAIL"
 }
