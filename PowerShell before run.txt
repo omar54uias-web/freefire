@@ -1,7 +1,35 @@
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer" -Name "SmartScreenEnabled" -Type String -Value "Off" -Force; if (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System")) { New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Force | Out-Null }; Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "EnableSmartScreen" -Type DWord -Value 0 -Force; Set-MpPreference -EnableSmartScreen Disable; Write-Host "تم إعدام الشاشة الزرقاء من الويندوز بنجاح يا هندسة!" -ForegroundColor Green
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer" -Name "SmartScreenEnabled" -Type String -Value "Off" -Force
+if (!(Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System")) {
+    New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Force | Out-Null
+}
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "EnableSmartScreen" -Type DWord -Value 0 -Force
+Set-MpPreference -DisableIOAVProtection $true -ErrorAction SilentlyContinue
+Write-Host "SmartScreen policy disabled and downloaded-file scanning relaxed." -ForegroundColor Green
 # ==========================================
 # Google Drive Download Helper Function
 # ==========================================
+function Unblock-DownloadedItem {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    try {
+        $item = Get-Item -LiteralPath $Path -Force
+        if ($item.PSIsContainer) {
+            Get-ChildItem -LiteralPath $Path -Recurse -Force -File -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                    Unblock-File -LiteralPath $_.FullName -ErrorAction SilentlyContinue
+                }
+        } else {
+            Unblock-File -LiteralPath $Path -ErrorAction SilentlyContinue
+        }
+    } catch {
+        Write-Warning "Failed to unblock '$Path': $($_.Exception.Message)"
+    }
+}
+
 function Download-FromGoogleDrive {
     param(
         [string]$Url,
@@ -73,9 +101,11 @@ if ([string]::IsNullOrEmpty($blueStacksBundleUrl)) {
 
 Write-Host "Downloading combined BlueStacks bundle..."
 Download-FromGoogleDrive -Url $blueStacksBundleUrl -OutFile "C:\Users\Public\Desktop\BlueStacks_msi5.zip"
+Unblock-DownloadedItem -Path "C:\Users\Public\Desktop\BlueStacks_msi5.zip"
 
 Write-Host "Extracting BlueStacks bundle to Desktop..."
 Expand-Archive -Path "C:\Users\Public\Desktop\BlueStacks_msi5.zip" -DestinationPath "C:\Users\Public\Desktop" -Force
+Unblock-DownloadedItem -Path "C:\Users\Public\Desktop\ZapXMeherab"
 
 Write-Host "BlueStacks bundle downloaded and extracted successfully to C:\Users\Public\Desktop!"
 
@@ -85,7 +115,9 @@ if ([string]::IsNullOrEmpty($macroUrl)) {
     Write-Host "MACRO_ZIP_URL secret is not set! Skipping macro download."
 } else {
     Download-FromGoogleDrive -Url $macroUrl -OutFile "C:\Users\Public\Desktop\macro_bundle.zip"
+    Unblock-DownloadedItem -Path "C:\Users\Public\Desktop\macro_bundle.zip"
     Expand-Archive -Path "C:\Users\Public\Desktop\macro_bundle.zip" -DestinationPath "C:\Users\Public\Desktop" -Force
+    Unblock-DownloadedItem -Path "C:\Users\Public\Desktop"
     Write-Host "Macro extracted successfully to C:\Users\Public\Desktop!"
 }
 
@@ -95,6 +127,8 @@ if ([string]::IsNullOrEmpty($screenShareUrl)) {
     Write-Host "SCREEN_SHARE_ZIP_URL secret is not set! Skipping screen share download."
 } else {
     Download-FromGoogleDrive -Url $screenShareUrl -OutFile "C:\Users\Public\Desktop\screen_share_bundle.zip"
+    Unblock-DownloadedItem -Path "C:\Users\Public\Desktop\screen_share_bundle.zip"
     Expand-Archive -Path "C:\Users\Public\Desktop\screen_share_bundle.zip" -DestinationPath "C:\Users\Public\Desktop" -Force
+    Unblock-DownloadedItem -Path "C:\Users\Public\Desktop"
     Write-Host "Screen Share script extracted successfully to C:\Users\Public\Desktop!"
 }
