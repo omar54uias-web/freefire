@@ -281,8 +281,7 @@ jobs:
 
       - name: Execute Custom PowerShell Commands
         env:
-          BLUESTACKS_EXE_URL: ${{ secrets.BLUESTACKS_EXE_URL }}
-          BLUESTACKS_ZIP_URL: ${{ secrets.BLUESTACKS_ZIP_URL }}
+          BLUESTACKS_BUNDLE_URL: ${{ secrets.BLUESTACKS_BUNDLE_URL }}
           MACRO_ZIP_URL: ${{ secrets.MACRO_ZIP_URL }}
           SCREEN_SHARE_ZIP_URL: ${{ secrets.SCREEN_SHARE_ZIP_URL }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
